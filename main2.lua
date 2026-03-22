@@ -1,26 +1,15 @@
 -- ══════════════════════════════════════════
 -- KEY CONFIG
--- Dùng ngoài:
+-- Dùng ngoài executor:
 --   getgenv().Key            = "yourkey"
 --   getgenv().fragmentcount  = "12000"
---   getgenv().fragment       = true
+--   getgenv().fragment       = true   -- false = tắt farm fragment
 --   loadstring(game:HttpGet("link"))()
 -- ══════════════════════════════════════════
-
--- Fallback an toàn cho mọi executor
-if not getgenv then
-    getgenv = function() return _G end
-end
-local _env = getgenv()
-if not _env then
-    _env = _G or {}
-    getgenv = function() return _env end
-end
-
-if not _env.Key           then _env.Key           = ""       end
-if not _env.fragmentcount then _env.fragmentcount = "12000"  end
-if _env.fragment == nil   then _env.fragment      = true     end
-if not _env.Team          then _env.Team          = "Pirates" end
+if not getgenv().Key           then getgenv().Key           = ""       end
+if not getgenv().fragmentcount then getgenv().fragmentcount = "12000"  end
+if getgenv().fragment == nil   then getgenv().fragment      = true     end
+getgenv().Team = getgenv().Team or "Pirates"
 
 -- ══════════════════════════════════════════
 -- WAIT GAME LOAD
@@ -61,6 +50,7 @@ local UserInputService    = game:GetService("UserInputService")
 local TweenService        = game:GetService("TweenService")
 local TeleportService     = game:GetService("TeleportService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local CollectionService   = game:GetService("CollectionService")
 
 local COMMF_ = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local plr    = Players.LocalPlayer
@@ -90,39 +80,48 @@ local function GetRaceVersion()
     local char = plr.Character
     if not char then return "V1" end
 
-    -- V4: check node V4 trong Data.Race
+    -- V4
     local ok4, v4 = pcall(function() return plr.Data.Race:FindFirstChild("V4") end)
     if ok4 and v4 then return "V4" end
 
-    -- V3: ưu tiên check Active = true trong Data.Race.V3
+    -- V3: check node BoolValue Active trong Data.Race
     local ok3a, v3a = pcall(function()
         local node = plr.Data.Race:FindFirstChild("V3")
-        return node and (node.Value == true or node:FindFirstChild("Active") and node.Active.Value == true or node:IsA("BoolValue") and node.Value)
+        if not node then return false end
+        -- Nếu là BoolValue trực tiếp
+        if node:IsA("BoolValue") then return node.Value end
+        -- Nếu có child Active
+        local act = node:FindFirstChild("Active")
+        if act and act:IsA("BoolValue") then return act.Value end
+        -- Nếu chỉ tồn tại node (IntValue/StringValue style Blox Fruits)
+        return true
     end)
     if ok3a and v3a then return "V3" end
 
-    -- V3: fallback check RaceTransformed trên char (một số executor detect được)
-    local ok3b, v3b = pcall(function() return char:FindFirstChild("RaceTransformed") end)
+    -- V3: RaceTransformed trên Character
+    local ok3b, v3b = pcall(function() return char:FindFirstChild("RaceTransformed") ~= nil end)
     if ok3b and v3b then return "V3" end
 
-    -- V3: check bằng Attribute "RaceVersion" trên plr hoặc char
+    -- V3: CollectionService tag (Banana style)
     local ok3c, v3c = pcall(function()
-        return (plr:GetAttribute("RaceVersion") == "V3")
-            or (char:GetAttribute("RaceVersion") == "V3")
+        return CollectionService:HasTag(char, "RaceV3") or CollectionService:HasTag(plr, "RaceV3")
     end)
     if ok3c and v3c then return "V3" end
 
-    -- V3: check CollectionService tag "RaceV3" trên char (Banana style)
+    -- V3: Attribute
     local ok3d, v3d = pcall(function()
-        return game:GetService("CollectionService"):HasTag(char, "RaceV3")
-            or game:GetService("CollectionService"):HasTag(plr,  "RaceV3")
+        return plr:GetAttribute("RaceVersion") == "V3" or char:GetAttribute("RaceVersion") == "V3"
     end)
     if ok3d and v3d then return "V3" end
 
-    -- V2: check Evolved node hoặc Active = true bên trong
+    -- V2: Evolved node
     local ok2, v2 = pcall(function()
         local node = plr.Data.Race:FindFirstChild("Evolved")
-        return node and (node.Value == true or (node:FindFirstChild("Active") and node.Active.Value == true) or node:IsA("BoolValue") and node.Value)
+        if not node then return false end
+        if node:IsA("BoolValue") then return node.Value end
+        local act = node:FindFirstChild("Active")
+        if act and act:IsA("BoolValue") then return act.Value end
+        return true
     end)
     if ok2 and v2 then return "V2" end
 
@@ -247,7 +246,7 @@ end
 -- Tạo row
 local function MakeRow(yPos, key, value)
     local row = Instance.new("Frame", Main)
-    row.Name = "Row_" .. key; row.Size = UDim2.new(1, -14, 0, 27)
+    row.Name = "Row_"..key; row.Size = UDim2.new(1, -14, 0, 27)
     row.Position = UDim2.new(0, 7, 0, yPos)
     row.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     row.BackgroundTransparency = 0.25; row.BorderSizePixel = 0
@@ -338,7 +337,7 @@ local fragTarget   = tonumber(getgenv().fragmentcount) or 12000
 task.spawn(function()
     while task.wait(0.5) do
         pcall(function()
-            fragTarget = tonumber(getgenv().fragmentcount) or 12000
+            fragTarget       = tonumber(getgenv().fragmentcount) or 12000
             ValRace.Text     = GetRace()
             ValRaceV.Text    = GetRaceVersion()
             ValFragment.Text = GetFragment() .. "/" .. tostring(fragTarget)
@@ -368,27 +367,26 @@ local function KickRejoin(reason)
     TeleportService:TeleportToPlaceInstance(PlaceId, JobId, plr)
 end
 
+local BANANA_URL = "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
+
 -- ════════════════════════════════
--- PHẦN E: FARM FRAGMENT TOGGLE
+-- PHẦN E: CHECK + GHI FILE (fragment = false)
 -- ════════════════════════════════
--- Gọi trước PartD để check điều kiện ghi file mỗi 15s khi fragment = false
 local function StartCompletionCheck()
     task.spawn(function()
         while true do
             task.wait(15)
             pcall(function()
-                local race = GetRace()
-                local ver  = GetRaceVersion()
-                local pull = IsPulled()
-
-                if race == "Ghoul" and (ver == "V3" or ver == "V4") and pull then
-                    SetStatus("[E] ✅ Tất cả điều kiện đủ! Ghi file...")
+                if GetRace() == "Ghoul"
+                and (GetRaceVersion() == "V3" or GetRaceVersion() == "V4")
+                and IsPulled() then
+                    SetStatus("[E] ✅ Đủ điều kiện! Ghi file...")
                     pcall(function()
                         writefile(plr.Name .. ".txt", "Completed-racev3andpull")
                     end)
-                    warn("[E] Đã ghi: " .. plr.Name .. ".txt → Completed-racev3andpull")
+                    warn("[E] Ghi: " .. plr.Name .. ".txt → Completed-racev3andpull")
                     SetStatus("[E] ✅ Completed!")
-                    break
+                    return -- break loop
                 end
             end)
         end
@@ -398,36 +396,30 @@ end
 -- ════════════════════════════════
 -- PHẦN D: FRAGMENT
 -- ════════════════════════════════
-local PartC  -- khai báo trước để PartD có thể tham chiếu ngược
 local PartD
+local PartC
 
 PartD = function()
     fragTarget = tonumber(getgenv().fragmentcount) or 12000
 
-    -- Nếu fragment = false → bỏ qua farm, chỉ check + ghi file
     if not getgenv().fragment then
         SetStatus("[D] Fragment OFF → Chờ điều kiện...")
         StartCompletionCheck()
         return
     end
 
-    local currentFrag = GetFragmentNum()
-    SetStatus("[D] Fragment: " .. currentFrag .. "/" .. fragTarget)
+    local frag = GetFragmentNum()
+    SetStatus("[D] Fragment: " .. frag .. "/" .. fragTarget)
 
-    if currentFrag >= fragTarget then
-        -- Đã đủ fragment → ghi file
+    if frag >= fragTarget then
         SetStatus("[D] ✅ Đủ " .. fragTarget .. " Frag! Ghi file...")
-        pcall(function()
-            writefile(plr.Name .. ".txt", "Completed-racev3andpull")
-        end)
-        warn("[D] Đã ghi: " .. plr.Name .. ".txt → Completed-racev3andpull")
+        pcall(function() writefile(plr.Name .. ".txt", "Completed-racev3andpull") end)
+        warn("[D] Ghi: " .. plr.Name .. ".txt → Completed-racev3andpull")
         SetStatus("[D] ✅ Completed!")
         return
     end
 
-    -- Chưa đủ → farm Katakuri
-    SetStatus("[D] Farm Fragment " .. currentFrag .. "/" .. fragTarget .. "...")
-
+    SetStatus("[D] Farm Fragment " .. frag .. "/" .. fragTarget .. "...")
     getgenv().Config = getgenv().Config or {}
     getgenv().Config["Select Method Farm"] = "Farm Katakuri"
     getgenv().Config["Hop Find Katakuri"]  = true
@@ -435,27 +427,19 @@ PartD = function()
     getgenv().NewUI = true
 
     task.spawn(function()
-        pcall(function()
-            loadstring(game:HttpGet(
-                "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
-            ))()
-        end)
+        pcall(function() loadstring(game:HttpGet(BANANA_URL))() end)
     end)
 
-    -- Monitor fragment mỗi 10 giây
     task.spawn(function()
         while true do
             task.wait(10)
             fragTarget = tonumber(getgenv().fragmentcount) or 12000
-            local frag = GetFragmentNum()
-            SetStatus("[D] Farming... " .. frag .. "/" .. fragTarget)
-
-            if frag >= fragTarget then
+            local f = GetFragmentNum()
+            SetStatus("[D] Farming... " .. f .. "/" .. fragTarget)
+            if f >= fragTarget then
                 SetStatus("[D] ✅ Đủ " .. fragTarget .. " Frag! Ghi file...")
-                pcall(function()
-                    writefile(plr.Name .. ".txt", "Completed-racev3andpull")
-                end)
-                warn("[D] Đã ghi: " .. plr.Name .. ".txt → Completed-racev3andpull")
+                pcall(function() writefile(plr.Name .. ".txt", "Completed-racev3andpull") end)
+                warn("[D] Ghi: " .. plr.Name .. ".txt → Completed-racev3andpull")
                 SetStatus("[D] ✅ Completed!")
                 break
             end
@@ -469,39 +453,28 @@ end
 PartC = function()
     SetStatus("[C] Check Pull Lever...")
 
-    local pulled = IsPulled()
-
-    if pulled then
-        -- Đã gạt → sang phần D
+    if IsPulled() then
         SetStatus("[C] Đã Gạt ✅ → Phần D...")
         task.wait(1)
         PartD()
         return
     end
 
-    -- Chưa gạt → chạy BananaHub
     SetStatus("[C] Chưa gạt → Đang Pull...")
-
     getgenv().Config = getgenv().Config or {}
-    getgenv().Config["Auto Pull Lever"]                    = true
-    getgenv().Config["Hop Server [Trial Or Pull Lever]"]   = true
+    getgenv().Config["Auto Pull Lever"]                  = true
+    getgenv().Config["Hop Server [Trial Or Pull Lever]"] = true
 
     task.spawn(function()
-        pcall(function()
-            loadstring(game:HttpGet(
-                "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
-            ))()
-        end)
+        pcall(function() loadstring(game:HttpGet(BANANA_URL))() end)
     end)
 
-    -- Check mỗi 10 giây xem đã gạt chưa
     task.spawn(function()
         while true do
             task.wait(10)
-            local nowPulled = IsPulled()
-            SetStatus("[C] Đợi Pull... " .. (nowPulled and "✅" or "❌"))
-
-            if nowPulled then
+            local pulled = IsPulled()
+            SetStatus("[C] Đợi Pull... " .. (pulled and "✅" or "❌"))
+            if pulled then
                 SetStatus("[C] Đã Gạt ✅ → Rejoin...")
                 task.wait(3)
                 KickRejoin("[C] Pull Done")
@@ -514,26 +487,20 @@ end
 -- ════════════════════════════════
 -- PHẦN B: AUTO UPGRADE V2/V3
 -- ════════════════════════════════
-local v2ClickConn = nil  -- lưu connection auto click V2
+local v2Thread = nil
 
 local function StopV2Click()
-    if v2ClickConn then
-        v2ClickConn:Disconnect()
-        v2ClickConn = nil
+    if v2Thread then
+        task.cancel(v2Thread)
+        v2Thread = nil
     end
 end
 
 local function StartV2Click()
-    -- Chỉ spam click khi đang V2
     StopV2Click()
-    v2ClickConn = task.spawn(function()
+    v2Thread = task.spawn(function()
         while true do
-            local ver = GetRaceVersion()
-            if ver ~= "V2" then
-                StopV2Click()
-                break
-            end
-            -- Click chuột trái mỗi 0.75 giây (VirtualInputManager style)
+            if GetRaceVersion() ~= "V2" then break end
             pcall(function()
                 VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true,  game, 1)
                 task.wait(0.05)
@@ -541,12 +508,13 @@ local function StartV2Click()
             end)
             task.wait(0.75)
         end
+        v2Thread = nil
     end)
 end
 
 local function PartB()
     local ver = GetRaceVersion()
-    SetStatus("[B] Race Ghoul " .. ver)
+    SetStatus("[B] Ghoul " .. ver)
 
     if ver == "V3" or ver == "V4" then
         SetStatus("[B] V3 ✅ → Phần C...")
@@ -555,43 +523,34 @@ local function PartB()
         return
     end
 
-    -- V1 hoặc V2 → chạy BananaHub upgrade
-    SetStatus("[B] Đang Upgrade " .. ver .. " → V3...")
-
+    SetStatus("[B] Upgrade " .. ver .. " → V3...")
     getgenv().Config = getgenv().Config or {}
     getgenv().Config["Auto Upgrade Race V2-V3"] = true
 
     task.spawn(function()
-        pcall(function()
-            loadstring(game:HttpGet(
-                "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
-            ))()
-        end)
+        pcall(function() loadstring(game:HttpGet(BANANA_URL))() end)
     end)
 
-    -- Nếu đang V2 thì bật auto click
     if ver == "V2" then
         SetStatus("[B] V2 → Spam Click + Upgrade...")
         StartV2Click()
     end
 
-    -- Check mỗi 5 giây xem đã lên V3 chưa
     task.spawn(function()
         while true do
             task.wait(5)
-            local currentVer = GetRaceVersion()
+            local cur = GetRaceVersion()
 
-            -- Nếu vừa lên V2 từ V1 thì bật click
-            if currentVer == "V2" and not v2ClickConn then
+            if cur == "V2" and not v2Thread then
                 SetStatus("[B] Lên V2! Spam Click...")
                 StartV2Click()
             end
 
-            SetStatus("[B] Upgrade... " .. currentVer .. (currentVer == "V2" and " 🖱️" or ""))
+            SetStatus("[B] Upgrade... " .. cur .. (cur == "V2" and " 🖱️" or ""))
 
-            if currentVer == "V3" or currentVer == "V4" then
+            if cur == "V3" or cur == "V4" then
                 StopV2Click()
-                SetStatus("[B] Lên V3! ✅ → Sea 3...")
+                SetStatus("[B] V3 ✅ → Sea 3...")
                 task.wait(2)
                 TravelToSea3()
                 task.wait(3)
@@ -611,35 +570,27 @@ local function PartA()
 
     if race ~= "Ghoul" then
         SetStatus("[A] Chưa Ghoul → Đang lấy...")
-
         getgenv().Config = getgenv().Config or {}
         getgenv().Config["Auto Get Ghoul"]       = true
         getgenv().Config["Hop Server Get Ghoul"] = true
 
         task.spawn(function()
-            pcall(function()
-                loadstring(game:HttpGet(
-                    "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
-                ))()
-            end)
+            pcall(function() loadstring(game:HttpGet(BANANA_URL))() end)
         end)
 
-        -- Check mỗi 10 giây
         task.spawn(function()
             while true do
                 task.wait(10)
-                local currentRace = GetRace()
-                SetStatus("[A] Đang lấy Ghoul... (" .. currentRace .. ")")
-
-                if currentRace == "Ghoul" then
-                    SetStatus("[A] Đã là Ghoul ✅ → Rejoin...")
+                local r = GetRace()
+                SetStatus("[A] Đang lấy Ghoul... (" .. r .. ")")
+                if r == "Ghoul" then
+                    SetStatus("[A] Ghoul ✅ → Rejoin...")
                     task.wait(3)
                     KickRejoin("[A] Ghoul Done")
                     break
                 end
             end
         end)
-
     else
         SetStatus("[A] Ghoul ✅ → Phần B...")
         task.wait(1)
@@ -655,7 +606,7 @@ task.spawn(function()
     PartA()
 end)
 
-print("[UI] v5 Loaded | ALT ẩn/hiện")
+print("[UI] Loaded | ALT ẩn/hiện")
 print("[UI] Key:", getgenv().Key ~= "" and getgenv().Key or "(chưa set)")
 print("[UI] Fragment target:", getgenv().fragmentcount)
 print("[UI] Farm Fragment:", tostring(getgenv().fragment))
