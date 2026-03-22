@@ -1,11 +1,7 @@
 -- ══════════════════════════════════════════
--- KEY CONFIG (Set từ bên ngoài executor)
--- getgenv().Key = "yourkey"
--- loadstring(...)()
+-- KEY CONFIG
 -- ══════════════════════════════════════════
-if not getgenv().Key then
-    getgenv().Key = ""
-end
+if not getgenv().Key then getgenv().Key = "" end
 getgenv().Team = getgenv().Team or "Pirates"
 
 -- ══════════════════════════════════════════
@@ -16,7 +12,7 @@ repeat task.wait() until game.Players.LocalPlayer
 repeat task.wait() until game.Players.LocalPlayer:FindFirstChild("PlayerGui")
 
 -- ══════════════════════════════════════════
--- JOIN TEAM (VFAndSA style - chuẩn nhất)
+-- JOIN TEAM (VFAndSA style)
 -- ══════════════════════════════════════════
 if game.Players.LocalPlayer.Team == nil then
     repeat task.wait()
@@ -45,7 +41,7 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 local TweenService      = game:GetService("TweenService")
-local RunService        = game:GetService("RunService")
+local TeleportService   = game:GetService("TeleportService")
 
 local COMMF_ = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 local plr    = Players.LocalPlayer
@@ -55,7 +51,6 @@ if workspace.DistributedGameTime <= 10 then
 end
 if not COMMF_ then repeat task.wait(1) until COMMF_ end
 
--- Đợi Data sẵn sàng
 repeat task.wait(0.5) until
     plr.Character and
     plr.Character:FindFirstChild("HumanoidRootPart") and
@@ -99,6 +94,13 @@ local function GetPullStatus()
 end
 
 -- ══════════════════════════════════════════
+-- HÀM TRAVEL SEA 3 (tham khảo Kaitun + VFAndSA)
+-- ══════════════════════════════════════════
+local function TravelToSea3()
+    pcall(function() COMMF_:InvokeServer("TravelZou") end)
+end
+
+-- ══════════════════════════════════════════
 -- STATUS
 -- ══════════════════════════════════════════
 local CurrentStatus = "Đang khởi động..."
@@ -111,14 +113,13 @@ local oldGui = plr.PlayerGui:FindFirstChild("__SUI__")
 if oldGui then oldGui:Destroy() end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name            = "__SUI__"
-ScreenGui.ResetOnSpawn    = false
-ScreenGui.ZIndexBehavior  = Enum.ZIndexBehavior.Sibling
-ScreenGui.DisplayOrder    = 999
-ScreenGui.IgnoreGuiInset  = true
-ScreenGui.Parent          = plr.PlayerGui
+ScreenGui.Name           = "__SUI__"
+ScreenGui.ResetOnSpawn   = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.DisplayOrder   = 999
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent         = plr.PlayerGui
 
--- Main Frame
 local Main = Instance.new("Frame")
 Main.Name                   = "Main"
 Main.Size                   = UDim2.new(0, 215, 0, 195)
@@ -131,117 +132,111 @@ Main.Active                 = true
 Main.Parent                 = ScreenGui
 
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 7)
-
 local Stroke = Instance.new("UIStroke", Main)
-Stroke.Color     = Color3.fromRGB(200, 160, 30)
+Stroke.Color = Color3.fromRGB(200, 160, 30)
 Stroke.Thickness = 1.8
 
--- TopBar (handle kéo)
+-- TopBar
 local TopBar = Instance.new("Frame", Main)
-TopBar.Name                   = "TopBar"
-TopBar.Size                   = UDim2.new(1, 0, 0, 26)
-TopBar.Position               = UDim2.new(0, 0, 0, 0)
-TopBar.BackgroundColor3       = Color3.fromRGB(18, 18, 18)
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 26)
+TopBar.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 TopBar.BackgroundTransparency = 0
-TopBar.BorderSizePixel        = 0
-TopBar.Active                 = true
-TopBar.ZIndex                 = 5
-
-do
-    local c = Instance.new("UICorner", TopBar)
-    c.CornerRadius = UDim.new(0, 7)
-end
+TopBar.BorderSizePixel = 0
+TopBar.Active = true
+TopBar.ZIndex = 5
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 7)
 
 -- Accent line
 local AccLine = Instance.new("Frame", Main)
-AccLine.Name             = "AccLine"
-AccLine.Size             = UDim2.new(1, 0, 0, 2)
-AccLine.Position         = UDim2.new(0, 0, 0, 25)
+AccLine.Name = "AccLine"
+AccLine.Size = UDim2.new(1, 0, 0, 2)
+AccLine.Position = UDim2.new(0, 0, 0, 25)
 AccLine.BackgroundColor3 = Color3.fromRGB(200, 160, 30)
-AccLine.BorderSizePixel  = 0
+AccLine.BorderSizePixel = 0
 do
     local g = Instance.new("UIGradient", AccLine)
     g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(0,0,0)),
-        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255,210,60)),
-        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255,210,60)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(0,0,0)),
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 210, 60)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 210, 60)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 0, 0)),
     })
 end
 
--- Chấm trang trí
+-- Dots
 local Dots = Instance.new("TextLabel", TopBar)
-Dots.Size                   = UDim2.new(0, 44, 1, 0)
-Dots.Position               = UDim2.new(1, -46, 0, 0)
+Dots.Size = UDim2.new(0, 44, 1, 0)
+Dots.Position = UDim2.new(1, -46, 0, 0)
 Dots.BackgroundTransparency = 1
-Dots.Font                   = Enum.Font.GothamBold
-Dots.TextSize               = 12
-Dots.TextColor3             = Color3.fromRGB(200, 160, 30)
-Dots.Text                   = "• • •"
-Dots.ZIndex                 = 6
+Dots.Font = Enum.Font.GothamBold
+Dots.TextSize = 12
+Dots.TextColor3 = Color3.fromRGB(200, 160, 30)
+Dots.Text = "• • •"
+Dots.ZIndex = 6
 
--- Status label (trong topbar)
+-- Status label
 local StatusLabel = Instance.new("TextLabel", TopBar)
-StatusLabel.Name                   = "StatusLabel"
-StatusLabel.Size                   = UDim2.new(1, -52, 1, 0)
-StatusLabel.Position               = UDim2.new(0, 8, 0, 0)
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Size = UDim2.new(1, -52, 1, 0)
+StatusLabel.Position = UDim2.new(0, 8, 0, 0)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Font                   = Enum.Font.GothamBold
-StatusLabel.TextSize               = 11
-StatusLabel.TextColor3             = Color3.fromRGB(200, 160, 30)
-StatusLabel.TextXAlignment         = Enum.TextXAlignment.Left
-StatusLabel.TextTruncate           = Enum.TextTruncate.AtEnd
-StatusLabel.Text                   = "◈  " .. CurrentStatus
-StatusLabel.ZIndex                 = 6
+StatusLabel.Font = Enum.Font.GothamBold
+StatusLabel.TextSize = 11
+StatusLabel.TextColor3 = Color3.fromRGB(200, 160, 30)
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+StatusLabel.Text = "◈  " .. CurrentStatus
+StatusLabel.ZIndex = 6
 
 -- Divider
 local Divider = Instance.new("Frame", Main)
-Divider.Name             = "Divider"
-Divider.Size             = UDim2.new(1, -14, 0, 1)
-Divider.Position         = UDim2.new(0, 7, 0, 32)
+Divider.Name = "Divider"
+Divider.Size = UDim2.new(1, -14, 0, 1)
+Divider.Position = UDim2.new(0, 7, 0, 32)
 Divider.BackgroundColor3 = Color3.fromRGB(200, 160, 30)
 Divider.BackgroundTransparency = 0.5
-Divider.BorderSizePixel  = 0
+Divider.BorderSizePixel = 0
 do
     local g = Instance.new("UIGradient", Divider)
     g.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0,   Color3.fromRGB(0,0,0)),
-        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(200,160,30)),
-        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(200,160,30)),
-        ColorSequenceKeypoint.new(1,   Color3.fromRGB(0,0,0)),
+        ColorSequenceKeypoint.new(0,   Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(200, 160, 30)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(200, 160, 30)),
+        ColorSequenceKeypoint.new(1,   Color3.fromRGB(0, 0, 0)),
     })
 end
 
 -- Tạo row
 local function MakeRow(yPos, key, value)
     local row = Instance.new("Frame", Main)
-    row.Name                   = "Row_" .. key
-    row.Size                   = UDim2.new(1, -14, 0, 27)
-    row.Position               = UDim2.new(0, 7, 0, yPos)
-    row.BackgroundColor3       = Color3.fromRGB(20, 20, 20)
+    row.Name = "Row_" .. key
+    row.Size = UDim2.new(1, -14, 0, 27)
+    row.Position = UDim2.new(0, 7, 0, yPos)
+    row.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     row.BackgroundTransparency = 0.25
-    row.BorderSizePixel        = 0
+    row.BorderSizePixel = 0
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
 
     local kL = Instance.new("TextLabel", row)
-    kL.Size               = UDim2.new(0.48, 0, 1, 0)
-    kL.Position           = UDim2.new(0, 8, 0, 0)
+    kL.Size = UDim2.new(0.48, 0, 1, 0)
+    kL.Position = UDim2.new(0, 8, 0, 0)
     kL.BackgroundTransparency = 1
-    kL.Font               = Enum.Font.Gotham
-    kL.TextSize           = 11
-    kL.TextColor3         = Color3.fromRGB(160, 160, 160)
-    kL.TextXAlignment     = Enum.TextXAlignment.Left
-    kL.Text               = key
+    kL.Font = Enum.Font.Gotham
+    kL.TextSize = 11
+    kL.TextColor3 = Color3.fromRGB(160, 160, 160)
+    kL.TextXAlignment = Enum.TextXAlignment.Left
+    kL.Text = key
 
     local vL = Instance.new("TextLabel", row)
-    vL.Size               = UDim2.new(0.52, -8, 1, 0)
-    vL.Position           = UDim2.new(0.48, 0, 0, 0)
+    vL.Size = UDim2.new(0.52, -8, 1, 0)
+    vL.Position = UDim2.new(0.48, 0, 0, 0)
     vL.BackgroundTransparency = 1
-    vL.Font               = Enum.Font.GothamBold
-    vL.TextSize           = 11
-    vL.TextColor3         = Color3.fromRGB(230, 185, 50)
-    vL.TextXAlignment     = Enum.TextXAlignment.Right
-    vL.Text               = value
+    vL.Font = Enum.Font.GothamBold
+    vL.TextSize = 11
+    vL.TextColor3 = Color3.fromRGB(230, 185, 50)
+    vL.TextXAlignment = Enum.TextXAlignment.Right
+    vL.Text = value
 
     return vL
 end
@@ -258,23 +253,18 @@ local ValPull     = MakeRow(startY + gap * 3, "Pull :",     "...")
 -- ══════════════════════════════════════════
 do
     local dragging, dragStart, startPos = false, nil, nil
-
     TopBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
-            dragging  = true
-            dragStart = input.Position
-            startPos  = Main.Position
+            dragging = true; dragStart = input.Position; startPos = Main.Position
         end
     end)
-
     TopBar.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (
             input.UserInputType == Enum.UserInputType.MouseMovement or
@@ -282,10 +272,8 @@ do
         ) then
             local delta = input.Position - dragStart
             Main.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
             )
         end
     end)
@@ -294,9 +282,9 @@ end
 -- ══════════════════════════════════════════
 -- TOGGLE ALT
 -- ══════════════════════════════════════════
-local isVisible  = true
-local FULL_SIZE  = UDim2.new(0, 215, 0, 195)
-local HIDE_SIZE  = UDim2.new(0, 215, 0, 26)
+local isVisible = true
+local FULL_SIZE = UDim2.new(0, 215, 0, 195)
+local HIDE_SIZE = UDim2.new(0, 215, 0, 26)
 
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
@@ -337,29 +325,120 @@ task.spawn(function()
 end)
 
 -- ══════════════════════════════════════════
--- PHẦN A: AUTO CHECK RACE GHOUL
+-- LOGIC CHÍNH
 -- ══════════════════════════════════════════
-task.spawn(function()
-    task.wait(2)
-    local race = GetRace()
+local PlaceId = game.PlaceId
+local JobId   = game.JobId
 
-    if race ~= "Ghoul" then
-        SetStatus("Chưa phải Ghoul → Đang lấy...")
+-- Hàm kick + rejoin (Kaitun Boss style)
+local function KickRejoin(reason)
+    SetStatus(reason .. " → Rejoin...")
+    task.wait(3)
+    -- Reconnect lại đúng server
+    TeleportService.TeleportInitFailed:Connect(function()
+        TeleportService:TeleportToPlaceInstance(PlaceId, JobId, plr)
+    end)
+    TeleportService:TeleportToPlaceInstance(PlaceId, JobId, plr)
+end
 
-        getgenv().Config = getgenv().Config or {}
-        getgenv().Config["Auto Get Ghoul"]       = true
-        getgenv().Config["Hop Server Get Ghoul"] = true
-        -- Key đã được set từ getgenv().Key bên ngoài
+-- ── PHẦN B: AUTO UPGRADE V2 V3 ──
+local function PartB()
+    local ver = GetRaceVersion()
+    SetStatus("[B] Race Ghoul " .. ver)
 
+    if ver == "V3" or ver == "V4" then
+        -- Đã V3+ → sang phần C
+        SetStatus("[B] V3 ✅ → Phần C...")
+        -- TODO: Gọi PartC() ở đây
+        return
+    end
+
+    -- V1 hoặc V2 → chạy BananaHub upgrade
+    SetStatus("[B] Đang Upgrade " .. ver .. " → V3...")
+
+    getgenv().Config = getgenv().Config or {}
+    getgenv().Config["Auto Upgrade Race V2-V3"] = true
+
+    task.spawn(function()
         pcall(function()
             loadstring(game:HttpGet(
                 "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
             ))()
         end)
+    end)
+
+    -- Check mỗi 5 giây xem đã lên V3 chưa
+    task.spawn(function()
+        while true do
+            task.wait(5)
+            local currentVer = GetRaceVersion()
+            SetStatus("[B] Upgrade... " .. currentVer)
+
+            if currentVer == "V3" or currentVer == "V4" then
+                SetStatus("[B] Lên V3! ✅ → Sea 3...")
+                task.wait(2)
+
+                -- Travel Sea 3 (tham khảo Kaitun + VFAndSA)
+                TravelToSea3()
+                task.wait(3)
+
+                -- Kick rejoin để load lại Sea 3
+                KickRejoin("[B] V3 Done")
+                break
+            end
+        end
+    end)
+end
+
+-- ── PHẦN A: AUTO CHECK RACE GHOUL ──
+local function PartA()
+    local race = GetRace()
+    SetStatus("[A] Race: " .. race)
+
+    if race ~= "Ghoul" then
+        -- Không phải Ghoul → chạy BananaHub lấy Ghoul
+        SetStatus("[A] Chưa Ghoul → Đang lấy...")
+
+        getgenv().Config = getgenv().Config or {}
+        getgenv().Config["Auto Get Ghoul"]       = true
+        getgenv().Config["Hop Server Get Ghoul"] = true
+
+        task.spawn(function()
+            pcall(function()
+                loadstring(game:HttpGet(
+                    "https://raw.githubusercontent.com/obiiyeuem/vthangsitink/main/BananaHub.lua"
+                ))()
+            end)
+        end)
+
+        -- Check mỗi 10 giây xem đã thành Ghoul chưa
+        task.spawn(function()
+            while true do
+                task.wait(10)
+                local currentRace = GetRace()
+                SetStatus("[A] Đang lấy Ghoul... (" .. currentRace .. ")")
+
+                if currentRace == "Ghoul" then
+                    SetStatus("[A] Đã là Ghoul ✅ → Rejoin...")
+                    task.wait(3)
+                    KickRejoin("[A] Ghoul Done")
+                    break
+                end
+            end
+        end)
+
     else
-        -- Đã là Ghoul → phần B (sẽ thêm sau)
-        SetStatus("Ghoul ✅ - Sẵn sàng")
+        -- Đã là Ghoul → sang phần B
+        SetStatus("[A] Ghoul ✅ → Phần B...")
+        task.wait(1)
+        PartB()
     end
+end
+
+-- Khởi chạy
+task.spawn(function()
+    task.wait(2)
+    PartA()
 end)
 
-print("[UI] Loaded | ALT ẩn/hiện | Team:", getgenv().Team, "| Key:", getgenv().Key ~= "" and getgenv().Key or "(chưa set)")
+print("[UI] Loaded | ALT ẩn/hiện | Key:", getgenv().Key ~= "" and getgenv().Key or "(chưa set)")
