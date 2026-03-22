@@ -2,14 +2,25 @@
 -- KEY CONFIG
 -- Dùng ngoài:
 --   getgenv().Key            = "yourkey"
---   getgenv().fragmentcount  = "12000"   ← số fragment cần đạt
---   getgenv().fragment       = true      ← true = bật farm fragment, false = tắt
+--   getgenv().fragmentcount  = "12000"
+--   getgenv().fragment       = true
 --   loadstring(game:HttpGet("link"))()
 -- ══════════════════════════════════════════
-if not getgenv().Key           then getgenv().Key           = ""      end
-if not getgenv().fragmentcount then getgenv().fragmentcount = "12000" end
-if getgenv().fragment == nil   then getgenv().fragment      = true    end
-getgenv().Team = getgenv().Team or "Pirates"
+
+-- Fallback an toàn cho mọi executor
+if not getgenv then
+    getgenv = function() return _G end
+end
+local _env = getgenv()
+if not _env then
+    _env = _G or {}
+    getgenv = function() return _env end
+end
+
+if not _env.Key           then _env.Key           = ""       end
+if not _env.fragmentcount then _env.fragmentcount = "12000"  end
+if _env.fragment == nil   then _env.fragment      = true     end
+if not _env.Team          then _env.Team          = "Pirates" end
 
 -- ══════════════════════════════════════════
 -- WAIT GAME LOAD
