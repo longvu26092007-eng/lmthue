@@ -76,37 +76,60 @@ local function GetRace()
     return "Unknown"
 end
 
-local function GetSea()
-    local ok, v = pcall(function()
-        return tonumber(tostring(workspace:GetAttribute("MAP")):match("%d+"))
+-- Scan Titles UI (theo GhoulChecker style)
+local function ScanTitles()
+    local found = {}
+    pcall(function()
+        COMMF_:InvokeServer("getTitles")
     end)
-    if ok and v then return v end
-    return 1
+    pcall(function()
+        local m = plr.PlayerGui:FindFirstChild("Main")
+        if m then
+            local tf = m:FindFirstChild("Titles")
+            if tf then
+                local wasVisible = tf.Visible
+                tf.Visible = true
+                for _, d in pairs(tf:GetDescendants()) do
+                    if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
+                        found[d.Text] = true
+                    end
+                end
+                tf.Visible = wasVisible
+            end
+        end
+    end)
+    return found
+end
+
+local function TitlesHasText(found, target)
+    if found[target] then return true end
+    -- Không dấu chấm cuối
+    local nodot = target:sub(1, -2)
+    if found[nodot] then return true end
+    -- Contains
+    for txt in pairs(found) do
+        if txt:find(target, 1, true) or txt:find(nodot, 1, true) then
+            return true
+        end
+    end
+    return false
 end
 
 local function GetRaceVersion()
-    -- V4: check node V4 trong Data.Race
+    -- V4: check node V4 trong Data.Race (nhanh, không cần scan UI)
     local ok4, v4 = pcall(function()
         return plr.Data.Race:FindFirstChild("V4") ~= nil
     end)
     if ok4 and v4 then return "V4" end
 
-    -- V2/V3 đều dùng node "Evolved" trong Data.Race (theo Banana source)
-    -- Nếu có "Evolved" = đã lên V2 tối thiểu
-    local hasEvolved = false
-    local ok2, v2 = pcall(function()
-        return plr.Data.Race:FindFirstChild("Evolved") ~= nil
-    end)
-    if ok2 and v2 then hasEvolved = true end
+    -- V2/V3: scan Titles UI theo GhoulChecker
+    local found = ScanTitles()
 
-    if hasEvolved then
-        -- V3 = có Evolved + đang ở Sea 3
-        -- (Banana dùng World3 để check, tức MAP attribute chứa "3")
-        if GetSea() == 3 then
-            return "V3"
-        end
-        return "V2"
-    end
+    -- "Unlock Ghoul V3." = Race V3
+    if TitlesHasText(found, "Unlock Ghoul V3.") then return "V3" end
+
+    -- "Unlock Ghoul V2." = Race V2
+    if TitlesHasText(found, "Unlock Ghoul V2.") then return "V2" end
 
     return "V1"
 end
