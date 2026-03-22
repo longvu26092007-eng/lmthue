@@ -180,8 +180,28 @@ local function GetPullStatus()
     return "❌ Chưa Gạt"
 end
 
+-- Sea check đầy đủ 6 PlaceId (từ Levi script)
+local SEA_1 = {["2753915549"]=true, ["85211729168715"]=true}
+local SEA_2 = {["4442272183"]=true,  ["79091703265657"]=true}
+local SEA_3 = {["7449423635"]=true,  ["100117331123089"]=true}
+
+local function GetCurrentSea()
+    local pid = tostring(game.PlaceId)
+    if SEA_3[pid] then return 3 end
+    if SEA_2[pid] then return 2 end
+    return 1
+end
+
 local function TravelToSea3()
-    pcall(function() COMMF_:InvokeServer("TravelZou") end)
+    local sea = GetCurrentSea()
+    if sea == 1 then
+        -- Sea 1 → đi Sea 2 trước (giống Levi script)
+        pcall(function() COMMF_:InvokeServer("TravelDressrosa") end)
+    elseif sea == 2 then
+        -- Sea 2 → đi Sea 3
+        pcall(function() COMMF_:InvokeServer("TravelZou") end)
+    end
+    -- sea == 3: đã ở Sea 3 rồi, không cần travel
 end
 
 -- ══════════════════════════════════════════
@@ -489,6 +509,15 @@ PartC = function()
         SetStatus("[C] Đã Gạt ✅ → Phần D...")
         task.wait(1)
         PartD()
+        return
+    end
+
+    -- Check Sea trước khi bật script Pull Lever
+    if GetCurrentSea() ~= 3 then
+        SetStatus("[C] Chưa ở Sea 3 → Travel...")
+        TravelToSea3()
+        task.wait(3)
+        KickRejoin("[C] Đến Sea 3")
         return
     end
 
