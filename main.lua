@@ -76,61 +76,37 @@ local function GetRace()
     return "Unknown"
 end
 
-local function GetRaceVersion()
-    local char = plr.Character
-    if not char then return "V1" end
+local function GetSea()
+    local ok, v = pcall(function()
+        return tonumber(tostring(workspace:GetAttribute("MAP")):match("%d+"))
+    end)
+    if ok and v then return v end
+    return 1
+end
 
-    -- V4: node V4 tồn tại trong Data.Race
-    local ok4, v4 = pcall(function() return plr.Data.Race:FindFirstChild("V4") ~= nil end)
+local function GetRaceVersion()
+    -- V4: check node V4 trong Data.Race
+    local ok4, v4 = pcall(function()
+        return plr.Data.Race:FindFirstChild("V4") ~= nil
+    end)
     if ok4 and v4 then return "V4" end
 
-    -- ── DETECT V3 bằng skill T (RaceSkill/Transform) trên Character ──
-    -- Blox Fruits V3 unlock skill T → xuất hiện Tool hoặc Script trên char
-
-    -- Cách 1: Check Tool tên chứa "V3" hoặc "Transform" trong Backpack/char
-    local ok3t, v3t = pcall(function()
-        for _, x in ipairs({char, plr.Backpack}) do
-            for _, obj in ipairs(x:GetChildren()) do
-                local n = obj.Name:lower()
-                if (obj:IsA("Tool") or obj:IsA("LocalScript") or obj:IsA("Script"))
-                and (n:find("v3") or n:find("transform") or n:find("awaken")) then
-                    return true
-                end
-            end
-        end
-        return false
-    end)
-    if ok3t and v3t then return "V3" end
-
-    -- Cách 2: Check Data.Race có node tên "V3" bất kể class
-    local ok3a, v3a = pcall(function()
-        return plr.Data.Race:FindFirstChild("V3") ~= nil
-    end)
-    if ok3a and v3a then return "V3" end
-
-    -- Cách 3: Check Data.Race có node tên "Ghoul_V3" / "HumanV3" / v.v
-    local ok3b, v3b = pcall(function()
-        for _, node in ipairs(plr.Data.Race:GetChildren()) do
-            local n = node.Name:lower()
-            if n:find("v3") or n:find("third") then return true end
-        end
-        return false
-    end)
-    if ok3b and v3b then return "V3" end
-
-    -- Cách 4: RaceTransformed / CollectionService tag
-    local ok3c, v3c = pcall(function()
-        return char:FindFirstChild("RaceTransformed") ~= nil
-            or CollectionService:HasTag(char, "RaceV3")
-            or CollectionService:HasTag(plr,  "RaceV3")
-    end)
-    if ok3c and v3c then return "V3" end
-
-    -- ── DETECT V2 bằng Evolved node ──
+    -- V2/V3 đều dùng node "Evolved" trong Data.Race (theo Banana source)
+    -- Nếu có "Evolved" = đã lên V2 tối thiểu
+    local hasEvolved = false
     local ok2, v2 = pcall(function()
         return plr.Data.Race:FindFirstChild("Evolved") ~= nil
     end)
-    if ok2 and v2 then return "V2" end
+    if ok2 and v2 then hasEvolved = true end
+
+    if hasEvolved then
+        -- V3 = có Evolved + đang ở Sea 3
+        -- (Banana dùng World3 để check, tức MAP attribute chứa "3")
+        if GetSea() == 3 then
+            return "V3"
+        end
+        return "V2"
+    end
 
     return "V1"
 end
