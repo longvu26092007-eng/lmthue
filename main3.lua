@@ -77,44 +77,62 @@ local function GetRace()
 end
 
 -- ══════════════════════════════════════════
--- TITLES CACHE SYSTEM
--- Scan 1 lần khi khởi động, sau đó mỗi 30s
+-- TITLES CACHE SYSTEM (GhoulChecker style)
+-- Mở bảng Titles → scan → đóng lại
+-- V3: lock, dừng recheck | V1/V2: recheck mỗi 30s
 -- ══════════════════════════════════════════
 local TitlesCache     = {}
 local TitlesScanReady = false
+local TitlesLockedV3  = false
 
 local function DoScanTitles()
+    if TitlesLockedV3 then return end
+
     local found = {}
+
+    -- Bước 1: Gọi getTitles để server populate UI
     pcall(function() COMMF_:InvokeServer("getTitles") end)
-    task.wait(0.8)
+    task.wait(1)
+
+    -- Bước 2: Mở Titles, scan, đóng lại
     pcall(function()
         local m = plr.PlayerGui:FindFirstChild("Main")
         if not m then return end
         local tf = m:FindFirstChild("Titles")
         if not tf then return end
-        local wasVisible = tf.Visible
         tf.Visible = true
+        task.wait(0.3)
         for _, d in pairs(tf:GetDescendants()) do
             if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
                 found[d.Text] = true
             end
         end
-        tf.Visible = wasVisible
+        tf.Visible = false
     end)
+
     TitlesCache     = found
     TitlesScanReady = true
-    local n = 0
-    for _ in pairs(found) do n = n + 1 end
+    local n = 0; for _ in pairs(found) do n = n + 1 end
     print("[Titles] Quét xong — " .. n .. " titles")
+
+    -- Lock nếu phát hiện V3, không recheck nữa
+    for txt in pairs(found) do
+        if txt:find("Unlock Ghoul V3", 1, true) then
+            TitlesLockedV3 = true
+            print("[Titles] ✅ Ghoul V3 — dừng recheck")
+            break
+        end
+    end
 end
 
--- Scan lần đầu ngay khi khởi động
+-- Scan ngay khi khởi động
 task.spawn(function() DoScanTitles() end)
 
--- Auto rescan mỗi 30 giây
+-- Recheck mỗi 30s, chỉ khi chưa V3
 task.spawn(function()
     while true do
         task.wait(30)
+        if TitlesLockedV3 then break end
         DoScanTitles()
     end
 end)
@@ -132,15 +150,11 @@ local function TitlesHas(target)
 end
 
 local function GetRaceVersion()
-    -- V4: check nhanh qua Data
     local ok4, v4 = pcall(function()
         return plr.Data.Race:FindFirstChild("V4") ~= nil
     end)
     if ok4 and v4 then return "V4" end
-
-    -- Đợi scan lần đầu xong
     if not TitlesScanReady then return "..." end
-
     if TitlesHas("Unlock Ghoul V3.") then return "V3" end
     if TitlesHas("Unlock Ghoul V2.") then return "V2" end
     return "V1"
