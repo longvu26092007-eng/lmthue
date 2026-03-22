@@ -76,38 +76,54 @@ local function GetRace()
     return "Unknown"
 end
 
--- Scan Titles UI (theo GhoulChecker style)
-local function ScanTitles()
+-- ══════════════════════════════════════════
+-- TITLES CACHE SYSTEM
+-- Scan 1 lần khi khởi động, sau đó mỗi 30s
+-- ══════════════════════════════════════════
+local TitlesCache     = {}
+local TitlesScanReady = false
+
+local function DoScanTitles()
     local found = {}
-    pcall(function()
-        COMMF_:InvokeServer("getTitles")
-    end)
+    pcall(function() COMMF_:InvokeServer("getTitles") end)
+    task.wait(0.8)
     pcall(function()
         local m = plr.PlayerGui:FindFirstChild("Main")
-        if m then
-            local tf = m:FindFirstChild("Titles")
-            if tf then
-                local wasVisible = tf.Visible
-                tf.Visible = true
-                for _, d in pairs(tf:GetDescendants()) do
-                    if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
-                        found[d.Text] = true
-                    end
-                end
-                tf.Visible = wasVisible
+        if not m then return end
+        local tf = m:FindFirstChild("Titles")
+        if not tf then return end
+        local wasVisible = tf.Visible
+        tf.Visible = true
+        for _, d in pairs(tf:GetDescendants()) do
+            if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
+                found[d.Text] = true
             end
         end
+        tf.Visible = wasVisible
     end)
-    return found
+    TitlesCache     = found
+    TitlesScanReady = true
+    local n = 0
+    for _ in pairs(found) do n = n + 1 end
+    print("[Titles] Quét xong — " .. n .. " titles")
 end
 
-local function TitlesHasText(found, target)
-    if found[target] then return true end
-    -- Không dấu chấm cuối
+-- Scan lần đầu ngay khi khởi động
+task.spawn(function() DoScanTitles() end)
+
+-- Auto rescan mỗi 30 giây
+task.spawn(function()
+    while true do
+        task.wait(30)
+        DoScanTitles()
+    end
+end)
+
+local function TitlesHas(target)
+    if TitlesCache[target] then return true end
     local nodot = target:sub(1, -2)
-    if found[nodot] then return true end
-    -- Contains
-    for txt in pairs(found) do
+    if TitlesCache[nodot] then return true end
+    for txt in pairs(TitlesCache) do
         if txt:find(target, 1, true) or txt:find(nodot, 1, true) then
             return true
         end
@@ -116,21 +132,17 @@ local function TitlesHasText(found, target)
 end
 
 local function GetRaceVersion()
-    -- V4: check node V4 trong Data.Race (nhanh, không cần scan UI)
+    -- V4: check nhanh qua Data
     local ok4, v4 = pcall(function()
         return plr.Data.Race:FindFirstChild("V4") ~= nil
     end)
     if ok4 and v4 then return "V4" end
 
-    -- V2/V3: scan Titles UI theo GhoulChecker
-    local found = ScanTitles()
+    -- Đợi scan lần đầu xong
+    if not TitlesScanReady then return "..." end
 
-    -- "Unlock Ghoul V3." = Race V3
-    if TitlesHasText(found, "Unlock Ghoul V3.") then return "V3" end
-
-    -- "Unlock Ghoul V2." = Race V2
-    if TitlesHasText(found, "Unlock Ghoul V2.") then return "V2" end
-
+    if TitlesHas("Unlock Ghoul V3.") then return "V3" end
+    if TitlesHas("Unlock Ghoul V2.") then return "V2" end
     return "V1"
 end
 
