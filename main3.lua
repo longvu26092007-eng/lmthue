@@ -80,48 +80,55 @@ local function GetRaceVersion()
     local char = plr.Character
     if not char then return "V1" end
 
-    -- V4
-    local ok4, v4 = pcall(function() return plr.Data.Race:FindFirstChild("V4") end)
+    -- V4: node V4 tồn tại trong Data.Race
+    local ok4, v4 = pcall(function() return plr.Data.Race:FindFirstChild("V4") ~= nil end)
     if ok4 and v4 then return "V4" end
 
-    -- V3: check node BoolValue Active trong Data.Race
+    -- ── DETECT V3 bằng skill T (RaceSkill/Transform) trên Character ──
+    -- Blox Fruits V3 unlock skill T → xuất hiện Tool hoặc Script trên char
+
+    -- Cách 1: Check Tool tên chứa "V3" hoặc "Transform" trong Backpack/char
+    local ok3t, v3t = pcall(function()
+        for _, x in ipairs({char, plr.Backpack}) do
+            for _, obj in ipairs(x:GetChildren()) do
+                local n = obj.Name:lower()
+                if (obj:IsA("Tool") or obj:IsA("LocalScript") or obj:IsA("Script"))
+                and (n:find("v3") or n:find("transform") or n:find("awaken")) then
+                    return true
+                end
+            end
+        end
+        return false
+    end)
+    if ok3t and v3t then return "V3" end
+
+    -- Cách 2: Check Data.Race có node tên "V3" bất kể class
     local ok3a, v3a = pcall(function()
-        local node = plr.Data.Race:FindFirstChild("V3")
-        if not node then return false end
-        -- Nếu là BoolValue trực tiếp
-        if node:IsA("BoolValue") then return node.Value end
-        -- Nếu có child Active
-        local act = node:FindFirstChild("Active")
-        if act and act:IsA("BoolValue") then return act.Value end
-        -- Nếu chỉ tồn tại node (IntValue/StringValue style Blox Fruits)
-        return true
+        return plr.Data.Race:FindFirstChild("V3") ~= nil
     end)
     if ok3a and v3a then return "V3" end
 
-    -- V3: RaceTransformed trên Character
-    local ok3b, v3b = pcall(function() return char:FindFirstChild("RaceTransformed") ~= nil end)
+    -- Cách 3: Check Data.Race có node tên "Ghoul_V3" / "HumanV3" / v.v
+    local ok3b, v3b = pcall(function()
+        for _, node in ipairs(plr.Data.Race:GetChildren()) do
+            local n = node.Name:lower()
+            if n:find("v3") or n:find("third") then return true end
+        end
+        return false
+    end)
     if ok3b and v3b then return "V3" end
 
-    -- V3: CollectionService tag (Banana style)
+    -- Cách 4: RaceTransformed / CollectionService tag
     local ok3c, v3c = pcall(function()
-        return CollectionService:HasTag(char, "RaceV3") or CollectionService:HasTag(plr, "RaceV3")
+        return char:FindFirstChild("RaceTransformed") ~= nil
+            or CollectionService:HasTag(char, "RaceV3")
+            or CollectionService:HasTag(plr,  "RaceV3")
     end)
     if ok3c and v3c then return "V3" end
 
-    -- V3: Attribute
-    local ok3d, v3d = pcall(function()
-        return plr:GetAttribute("RaceVersion") == "V3" or char:GetAttribute("RaceVersion") == "V3"
-    end)
-    if ok3d and v3d then return "V3" end
-
-    -- V2: Evolved node
+    -- ── DETECT V2 bằng Evolved node ──
     local ok2, v2 = pcall(function()
-        local node = plr.Data.Race:FindFirstChild("Evolved")
-        if not node then return false end
-        if node:IsA("BoolValue") then return node.Value end
-        local act = node:FindFirstChild("Active")
-        if act and act:IsA("BoolValue") then return act.Value end
-        return true
+        return plr.Data.Race:FindFirstChild("Evolved") ~= nil
     end)
     if ok2 and v2 then return "V2" end
 
