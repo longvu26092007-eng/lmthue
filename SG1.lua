@@ -45,7 +45,7 @@ if LocalPlayer.Character then
     HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart") or Character:WaitForChild("HumanoidRootPart")
 end
 
-StarterGui:SetCore("SendNotification", {Title = "Executed", Text = "Loading… Please wait", Duration = 5})
+StarterGui:SetCore("SendNotification", {Title = "Executed", Text = "Loading... Please wait", Duration = 5})
 if not game:IsLoaded() or workspace.DistributedGameTime <= 10 then
     local WFGTL = COREGUI:FindFirstChild("WFGTL") or Instance.new("Hint", COREGUI)
     WFGTL.Text = "Just a moment... Waiting while the game loads - This won't take long!"
@@ -53,7 +53,6 @@ if not game:IsLoaded() or workspace.DistributedGameTime <= 10 then
     WFGTL:Destroy()
 end
 if not COMMF_ then repeat task.wait(1) until COMMF_ end
--- getgenv = (getgenv) or getgenv or function() return _G end
 task.spawn(function()
     xpcall(function()
         if not LocalPlayer.Team then
@@ -63,11 +62,10 @@ task.spawn(function()
             xpcall(function() COMMF_:InvokeServer("SetTeam", "Pirates")
             end, function() firesignal(LocalPlayer.PlayerGui["Main (minimal)"].ChooseTeam.Container.Pirates) end)
             task.wait(2)
-            -- pcall(function() require(ReplicatedStorage.Effect).new("BlindCam"):replicate({["Color"] = Color3.new(0, 0, 0); ["Duration"] = 2; ["Fade"] = 0.4; ["ZIndex"] = 1}) end)
         end
     end, function(err) warn("????", err) end)
 end)
-repeat task.wait(2) until Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildWhichIsA("Humanoid") and Character:IsDescendantOf(workspace.Characters) -- workspace.CurrentCamera.CameraSubject, Players.CharacterAdded:Wait()
+repeat task.wait(2) until Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildWhichIsA("Humanoid") and Character:IsDescendantOf(workspace.Characters)
 pcall(function() LocalPlayer.PlayerGui:FindFirstChild("Blank"):Destroy() end)
 local BlankScreen = LocalPlayer.PlayerGui:FindFirstChild("Blank") or Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 BlankScreen.Name = "Blank" BlankScreen.ResetOnSpawn = false BlankScreen.DisplayOrder = -math.huge BlankScreen.IgnoreGuiInset = true
@@ -77,13 +75,13 @@ label.AnchorPoint = Vector2.new(0.5, 0.5)
 label.Position = UDim2.new(0.5, 0, 0.5, 0)
 label.Size = UDim2.new(0.6, 0, 0.15, 0)
 label.Text = string.rep("Nil ", 20)
-label.TextScaled = true;
-label.TextWrapped = true;
-label.TextXAlignment = Enum.TextXAlignment.Center;
-label.TextYAlignment = Enum.TextYAlignment.Center;
-label.BackgroundTransparency = 1;
-label.Font = Enum.Font.GothamSemibold;
-label.TextSize = 48;
+label.TextScaled = true
+label.TextWrapped = true
+label.TextXAlignment = Enum.TextXAlignment.Center
+label.TextYAlignment = Enum.TextYAlignment.Center
+label.BackgroundTransparency = 1
+label.Font = Enum.Font.GothamSemibold
+label.TextSize = 48
 label.TextColor3 = Color3.fromRGB(255, 255, 255)
 local function SetText(newText) label.Text = newText end
 function CheckSea(v: number) return v == tonumber(workspace:GetAttribute("MAP"):match("%d+")) end
@@ -172,7 +170,7 @@ end)
 EquipWeapon = (function(v)
     if not Character then return end
     local tool = Character:FindFirstChildWhichIsA("Tool")
-    if tool and (tool.ToolTip and tool.ToolTip == v) then return end --((tool:GetAttribute("WeaponType") or "") == v 
+    if tool and (tool.ToolTip and tool.ToolTip == v) then return end
     for _, x in next, LocalPlayer.Backpack:GetChildren() do
         if x:IsA("Tool") and x.ToolTip == v then
             Humanoid:EquipTool(x)
@@ -184,7 +182,7 @@ end)
 local lastCallFA = tick()
 FastAttack = (function(x)
     if not HumanoidRootPart or not Character:FindFirstChildWhichIsA("Humanoid") or Character.Humanoid.Health <= 0 or not Character:FindFirstChildWhichIsA("Tool") then return end
-    local FAD = 0.01 -- throttle
+    local FAD = 0.01
     if FAD ~= 0 and tick() - lastCallFA <= FAD then return end
     local t = {}
     for _, e in next, workspace.Enemies:GetChildren() do
@@ -199,7 +197,6 @@ FastAttack = (function(x)
         if not h[1] then h[1] = part end
         h[2][#h[2] + 1] = {v, part} last = v
     end
-    -- h[2][#h[2] + 1] = last
     n:FindFirstChild("RE/RegisterAttack"):FireServer()
     n:FindFirstChild("RE/RegisterHit"):FireServer(unpack(h))
     cloneref(remoteAttack):FireServer(string.gsub("RE/RegisterHit", ".",function(c)
@@ -220,7 +217,6 @@ function GetServers()
             return CachedServers
         end
     end
-
     for i = 1, 100, 1 do
         local data = game:GetService("ReplicatedStorage"):WaitForChild("__ServerBrowser"):InvokeServer(i)
         if IfTableHaveIndex(data) then
@@ -233,7 +229,6 @@ end
 HopServer = function(Reason, MaxPlayers, ForcedRegion)
     local Servers = GetServers()
     local ArrayServers = {}
-
     for i, v in Servers do
         table.insert(ArrayServers, {
             JobId = i,
@@ -251,14 +246,12 @@ HopServer = function(Reason, MaxPlayers, ForcedRegion)
             if ServerData then
                 if not MaxPlayers or ServerData.Players < 5 then
                     if not ForcedRegion or ServerData.Regoin == ForcedRegion then
-                        print("Found Server:", ServerData.JobId, 'Player Count:', ServerData.Players, "Region:",
-                            ServerData.Region)
+                        print("Found Server:", ServerData.JobId, 'Player Count:', ServerData.Players, "Region:", ServerData.Region)
                         break
                     end
                 end
             end
         end
-
         print('Teleporting to', ServerData.JobId, '...')
         ReplicatedStorage:WaitForChild("__ServerBrowser"):InvokeServer('teleport', ServerData.JobId)
     end
@@ -279,7 +272,7 @@ local function getCFrame(v)
     if v:IsA("Vector3Value") then return CFrameNew(v.Value) end
 end
 local connection, tween, pathPart, isTweening = nil, nil, nil, false
-function Tween(targetCFrame: CFrame | boolean, target: CFrame) --old tween, lastest update: 5 months ago
+function Tween(targetCFrame: CFrame | boolean, target: CFrame)
     if targetCFrame == false then
         if tween then pcall(function() tween:Cancel() end) tween = nil end
         if connection then connection:Disconnect() connection = nil end
@@ -335,7 +328,6 @@ function Tween(targetCFrame: CFrame | boolean, target: CFrame) --old tween, last
         tween = nil
         isTweening = false
     end)
-
     tween:Play()
 end
 
@@ -364,7 +356,6 @@ BringMonster = (function(name, count) count = count or 3
             local hrp = mob[i]:FindFirstChild("HumanoidRootPart")
             local h = mob[i]:FindFirstChild("Humanoid")
             if hrp and (not isnetworkowner or isnetworkowner(hrp)) then
-                -- h.PlatformStand = false h.AutoRotate = false
                 hrp.AssemblyLinearVelocity = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
                 hrp.CFrame = t * CFrame.new((i-1) * 2, 0, 0)
@@ -394,7 +385,7 @@ TableQuests = setmetatable({}, {__index = function(_, k)
     return m and {Position = m, Meters = d, RawNPCName = raw} or nil
 end})
 
-local lastKenCall=tick() -- pray
+local lastKenCall=tick()
 KillMonster=(function(x)
     xpcall(function()
         if workspace.Enemies:FindFirstChild(x) then
@@ -403,7 +394,7 @@ KillMonster=(function(x)
                 if vh and vhrp and v.Name==x then
                     local dx,dy,dz=HumanoidRootPart.Position.X-vhrp.Position.X, HumanoidRootPart.Position.Y-vhrp.Position.Y, HumanoidRootPart.Position.Z-vhrp.Position.Z
                     local sqrMag=dx*dx+dy*dy+dz*dz
-                    if sqrMag<=4900 then 
+                    if sqrMag<=4900 then
                         BringMonster(x, 3)
                         FastAttack(x)
                         if tick()-lastKenCall>=10 then lastKenCall=tick() ReplicatedStorage.Remotes.CommE:FireServer("Ken",true) end
@@ -441,7 +432,7 @@ spawn(function()
                         if all < getgenv().Settings["Max Chests"] and not CheckTool("Fist of Darkness") then
                             for _, v in next, CollectionService:GetTagged("_ChestTagged") do if v and v.CanTouch then local dist = (v.Position - HumanoidRootPart.Position).Magnitude table.insert(chests, {obj = v, dist = dist}) end end
                             table.sort(chests, function(a, b) return a.dist < b.dist end)
-                            if not CheckTool("Fist of Darkness") then -- why I called this function 2 times?
+                            if not CheckTool("Fist of Darkness") then
                                 for i, t in next, chests do local v = t.obj
                                     if v:IsA("BasePart") and v.Name:find("Chest") then
                                         if v.CanTouch then SetText("Collect Chests")
@@ -569,19 +560,50 @@ spawn(function()
                             end
                         else if CheckLocation("Haunted Castle") then require(ReplicatedStorage.DialogueController):Close()
                             if not Soul.Swamp then
+                                -- ================================================================
+                                -- [2.txt STYLE] KILL ALL 6 LIVING ZOMBIES SIMULTANEOUSLY
+                                -- Thread keo TAT CA zombie ve 1 diem + freeze lien tuc
+                                -- FastAttack() hit ALL (khong filter ten) = 6 con/hit
+                                -- ================================================================
                                 SetText("Soul Guitar Puzzle | Living Zombie")
-                                Tween(CFrame.new(-10160, 170, 5930))
-                                for _, v in next, workspace.Enemies:GetChildren() do
-                                    if v.Name == "Living Zombie" and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                                        repeat task.wait() -- why it does't break when monster is dead?
-                                            SetText("Soul Guitar Puzzle | Killing Living Zombie " .. v.Humanoid.Health)
-                                            Tween(v.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
-                                            FastAttack()
-                                            EquipWeapon("Melee")
-                                            BringMonster(v.Name, 4)
-                                        until not v or v.Humanoid.Health <= 0 or workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon")
+                                local ZOMBIE_CENTER = CFrame.new(-10138.3974609375, 138.6524658203125, 5902.89208984375)
+                                local _killingZombies = true
+                                -- Thread 1: Keo TAT CA Living Zombie ve 1 diem + freeze (2.txt dong 8561-8578)
+                                task.spawn(function()
+                                    while _killingZombies do
+                                        pcall(function()
+                                            for _, zv in next, workspace.Enemies:GetChildren() do
+                                                if zv.Name == "Living Zombie" and zv:FindFirstChild("Humanoid") and zv.Humanoid.Health > 0 and zv:FindFirstChild("HumanoidRootPart") then
+                                                    zv.HumanoidRootPart.CFrame = ZOMBIE_CENTER
+                                                    if zv:FindFirstChild("Head") then zv.Head.CanCollide = false end
+                                                    zv.Humanoid.Sit = false
+                                                    zv.HumanoidRootPart.CanCollide = false
+                                                    zv.Humanoid.JumpPower = 0
+                                                    zv.Humanoid.WalkSpeed = 0
+                                                    if zv.Humanoid:FindFirstChild("Animator") then zv.Humanoid.Animator:Destroy() end
+                                                end
+                                            end
+                                        end)
+                                        task.wait()
                                     end
-                                end
+                                end)
+                                -- Bay den vung zombie
+                                Tween(CFrame.new(-10160, 170, 5930))
+                                task.wait(1)
+                                -- Main: Danh TAT CA zombie cung luc
+                                -- FastAttack() khong truyen ten = hit ALL enemies trong 65 stud
+                                repeat task.wait(0.1)
+                                    SetText("Soul Guitar Puzzle | Killing All Living Zombies")
+                                    if HumanoidRootPart then
+                                        HumanoidRootPart.CFrame = ZOMBIE_CENTER * CFrame.new(0, 30, 0)
+                                    end
+                                    FastAttack()
+                                    EquipWeapon("Melee")
+                                    BringMonster("Living Zombie", 6)
+                                until workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon")
+                                _killingZombies = false
+                                Tween(false)
+                                -- ================================================================
                             elseif not Soul.Gravestones then SetText("Soul Guitar Puzzle | Gravestones") for i, v in ipairs({2, 2, 1, 2, 1, 1, 1}) do fireclickdetector(CheckMap("Haunted Castle")["Placard" .. i][v == 1 and "Left" or "Right"].ClickDetector) end
                             elseif not Soul.Ghost then SetText("Soul Guitar Puzzle | Ghost") COMMF_:InvokeServer("GuitarPuzzleProgress", "Ghost")
                             elseif not Soul.Trophies then SetText("Soul Guitar Puzzle | Trophies")
@@ -631,9 +653,6 @@ TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, mess
         StarterGui:SetCore("SendNotification", {Title = "Death Hop Found", Text = message, Duration = 8})
         task.delay(10, function() game:Shutdown() end)
     end
-    -- player.Name -- my LocalPlayer
-    -- teleportResult -- Enum.TeleportResult
-    -- message -- Request experience is full
 end)
 GuiService.ErrorMessageChanged:Connect(newcclosure(function()
     if GuiService:GetErrorType() == Enum.ConnectionError.DisconnectErrors then
@@ -669,17 +688,14 @@ local function BringMob()
     local char = plr.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local hrpChar = char.HumanoidRootPart
-
     local enemies = workspace.Enemies:GetChildren()
     if #enemies == 0 then return end
-
     local totalpos = {}
     for _, v in pairs(enemies) do
         if not totalpos[v.Name] then
             totalpos[v.Name] = GetMobPosition(v.Name)
         end
     end
-
     for _, v in pairs(enemies) do
         local hum = v:FindFirstChild("Humanoid")
         local hrp = v:FindFirstChild("HumanoidRootPart")
@@ -707,4 +723,4 @@ local function BringMob()
 end
 
 RunService.Heartbeat:Connect(BringMob)
---bring 
+--bring
