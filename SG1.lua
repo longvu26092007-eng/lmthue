@@ -1,5 +1,5 @@
 getgenv().Settings = {
-    ["Max Chests"] = 50; -- if you collected 50 chests, hop server
+    ["Max Chests"] = 30; -- if you collected 50 chests, hop server
     ["Reset After Collect Chests"] = 10; -- if you collected 10 chests, it will reset for safe (anti kick)
 }
 
@@ -45,7 +45,7 @@ if LocalPlayer.Character then
     HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart") or Character:WaitForChild("HumanoidRootPart")
 end
 
-StarterGui:SetCore("SendNotification", {Title = "Executed", Text = "Loading… Please wait", Duration = 5})
+StarterGui:SetCore("SendNotification", {Title = "Executed", Text = "Loading... Please wait", Duration = 5})
 if not game:IsLoaded() or workspace.DistributedGameTime <= 10 then
     local WFGTL = COREGUI:FindFirstChild("WFGTL") or Instance.new("Hint", COREGUI)
     WFGTL.Text = "Just a moment... Waiting while the game loads - This won't take long!"
@@ -53,7 +53,7 @@ if not game:IsLoaded() or workspace.DistributedGameTime <= 10 then
     WFGTL:Destroy()
 end
 if not COMMF_ then repeat task.wait(1) until COMMF_ end
--- getgenv = (getgenv) or getgenv or function() return _G end
+
 task.spawn(function()
     xpcall(function()
         if not LocalPlayer.Team then
@@ -63,11 +63,11 @@ task.spawn(function()
             xpcall(function() COMMF_:InvokeServer("SetTeam", "Pirates")
             end, function() firesignal(LocalPlayer.PlayerGui["Main (minimal)"].ChooseTeam.Container.Pirates) end)
             task.wait(2)
-            -- pcall(function() require(ReplicatedStorage.Effect).new("BlindCam"):replicate({["Color"] = Color3.new(0, 0, 0); ["Duration"] = 2; ["Fade"] = 0.4; ["ZIndex"] = 1}) end)
         end
     end, function(err) warn("????", err) end)
 end)
-repeat task.wait(2) until Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildWhichIsA("Humanoid") and Character:IsDescendantOf(workspace.Characters) -- workspace.CurrentCamera.CameraSubject, Players.CharacterAdded:Wait()
+
+repeat task.wait(2) until Character and Character:FindFirstChild("HumanoidRootPart") and Character:FindFirstChildWhichIsA("Humanoid") and Character:IsDescendantOf(workspace.Characters)
 pcall(function() LocalPlayer.PlayerGui:FindFirstChild("Blank"):Destroy() end)
 local BlankScreen = LocalPlayer.PlayerGui:FindFirstChild("Blank") or Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 BlankScreen.Name = "Blank" BlankScreen.ResetOnSpawn = false BlankScreen.DisplayOrder = -math.huge BlankScreen.IgnoreGuiInset = true
@@ -87,6 +87,7 @@ label.TextSize = 48;
 label.TextColor3 = Color3.fromRGB(255, 255, 255)
 local function SetText(newText) label.Text = newText end
 function CheckSea(v: number) return v == tonumber(workspace:GetAttribute("MAP"):match("%d+")) end
+
 local remoteAttack, idremote
 local seed = ReplicatedStorage.Modules.Net.seed:InvokeServer()
 task.spawn((function() for _, v in next, ({ReplicatedStorage.Util, ReplicatedStorage.Common, ReplicatedStorage.Remotes, ReplicatedStorage.Assets, ReplicatedStorage.FX}) do
@@ -172,7 +173,7 @@ end)
 EquipWeapon = (function(v)
     if not Character then return end
     local tool = Character:FindFirstChildWhichIsA("Tool")
-    if tool and (tool.ToolTip and tool.ToolTip == v) then return end --((tool:GetAttribute("WeaponType") or "") == v 
+    if tool and (tool.ToolTip and tool.ToolTip == v) then return end 
     for _, x in next, LocalPlayer.Backpack:GetChildren() do
         if x:IsA("Tool") and x.ToolTip == v then
             Humanoid:EquipTool(x)
@@ -184,7 +185,7 @@ end)
 local lastCallFA = tick()
 FastAttack = (function(x)
     if not HumanoidRootPart or not Character:FindFirstChildWhichIsA("Humanoid") or Character.Humanoid.Health <= 0 or not Character:FindFirstChildWhichIsA("Tool") then return end
-    local FAD = 0.01 -- throttle
+    local FAD = 0.01 
     if FAD ~= 0 and tick() - lastCallFA <= FAD then return end
     local t = {}
     for _, e in next, workspace.Enemies:GetChildren() do
@@ -199,7 +200,6 @@ FastAttack = (function(x)
         if not h[1] then h[1] = part end
         h[2][#h[2] + 1] = {v, part} last = v
     end
-    -- h[2][#h[2] + 1] = last
     n:FindFirstChild("RE/RegisterAttack"):FireServer()
     n:FindFirstChild("RE/RegisterHit"):FireServer(unpack(h))
     cloneref(remoteAttack):FireServer(string.gsub("RE/RegisterHit", ".",function(c)
@@ -263,6 +263,7 @@ HopServer = function(Reason, MaxPlayers, ForcedRegion)
         ReplicatedStorage:WaitForChild("__ServerBrowser"):InvokeServer('teleport', ServerData.JobId)
     end
 end
+
 CheckLocation = (function(v) return LocalPlayer:GetAttribute("CurrentLocation") == v end)
 local function getCFrame(v)
     if not v then return nil end
@@ -279,7 +280,7 @@ local function getCFrame(v)
     if v:IsA("Vector3Value") then return CFrameNew(v.Value) end
 end
 local connection, tween, pathPart, isTweening = nil, nil, nil, false
-function Tween(targetCFrame: CFrame | boolean, target: CFrame) --old tween, lastest update: 5 months ago
+function Tween(targetCFrame: CFrame | boolean, target: CFrame)
     if targetCFrame == false then
         if tween then pcall(function() tween:Cancel() end) tween = nil end
         if connection then connection:Disconnect() connection = nil end
@@ -364,7 +365,6 @@ BringMonster = (function(name, count) count = count or 3
             local hrp = mob[i]:FindFirstChild("HumanoidRootPart")
             local h = mob[i]:FindFirstChild("Humanoid")
             if hrp and (not isnetworkowner or isnetworkowner(hrp)) then
-                -- h.PlatformStand = false h.AutoRotate = false
                 hrp.AssemblyLinearVelocity = Vector3.zero
                 hrp.AssemblyAngularVelocity = Vector3.zero
                 hrp.CFrame = t * CFrame.new((i-1) * 2, 0, 0)
@@ -394,7 +394,7 @@ TableQuests = setmetatable({}, {__index = function(_, k)
     return m and {Position = m, Meters = d, RawNPCName = raw} or nil
 end})
 
-local lastKenCall=tick() -- pray
+local lastKenCall=tick() 
 KillMonster=(function(x)
     xpcall(function()
         if workspace.Enemies:FindFirstChild(x) then
@@ -424,6 +424,8 @@ end)
 
 if LocalPlayer.Data.Level.Value < 2300 then LocalPlayer:Kick("Please Farm Level For Get Soul Guitar") end
 local all, done = 0, false
+local livingZombieTimer = 0 -- Khởi tạo timer cho Zombie
+
 spawn(function()
     while task.wait(0.2) do
         xpcall(function() local c = 0
@@ -441,7 +443,7 @@ spawn(function()
                         if all < getgenv().Settings["Max Chests"] and not CheckTool("Fist of Darkness") then
                             for _, v in next, CollectionService:GetTagged("_ChestTagged") do if v and v.CanTouch then local dist = (v.Position - HumanoidRootPart.Position).Magnitude table.insert(chests, {obj = v, dist = dist}) end end
                             table.sort(chests, function(a, b) return a.dist < b.dist end)
-                            if not CheckTool("Fist of Darkness") then -- why I called this function 2 times?
+                            if not CheckTool("Fist of Darkness") then
                                 for i, t in next, chests do local v = t.obj
                                     if v:IsA("BasePart") and v.Name:find("Chest") then
                                         if v.CanTouch then SetText("Collect Chests")
@@ -569,19 +571,40 @@ spawn(function()
                             end
                         else if CheckLocation("Haunted Castle") then require(ReplicatedStorage.DialogueController):Close()
                             if not Soul.Swamp then
+                                -- Bắt đầu đếm thời gian cho Living Zombie
+                                if livingZombieTimer == 0 then livingZombieTimer = tick() end
+                                
+                                -- Hop Server nếu quá 3 phút (180 giây)
+                                if tick() - livingZombieTimer >= 180 then
+                                    SetText("Living Zombie Timeout! Hopping Server...")
+                                    livingZombieTimer = 0
+                                    HopServer()
+                                    return 
+                                end
+
                                 SetText("Soul Guitar Puzzle | Living Zombie")
                                 Tween(CFrame.new(-10160, 170, 5930))
                                 for _, v in next, workspace.Enemies:GetChildren() do
                                     if v.Name == "Living Zombie" and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                                        repeat task.wait() -- why it does't break when monster is dead?
-                                            SetText("Soul Guitar Puzzle | Killing Living Zombie " .. v.Humanoid.Health)
+                                        repeat task.wait()
+                                            local timeLeft = math.floor(180 - (tick() - livingZombieTimer))
+                                            SetText("Soul Guitar Puzzle | Killing Living Zombie " .. v.Humanoid.Health .. "\nHop in: " .. timeLeft .. "s")
                                             Tween(v.HumanoidRootPart.CFrame * CFrame.new(0, 30, 0))
                                             FastAttack()
                                             EquipWeapon("Melee")
                                             BringMonster(v.Name, 4)
+                                            
+                                            -- Kiểm tra timeout ngay trong loop nhỏ
+                                            if tick() - livingZombieTimer >= 180 then break end
                                         until not v or v.Humanoid.Health <= 0 or workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon")
                                     end
                                 end
+                                
+                                -- Reset timer nếu đã xong nhiệm vụ (nước đổi màu)
+                                if workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon") then
+                                    livingZombieTimer = 0
+                                end
+
                             elseif not Soul.Gravestones then SetText("Soul Guitar Puzzle | Gravestones") for i, v in ipairs({2, 2, 1, 2, 1, 1, 1}) do fireclickdetector(CheckMap("Haunted Castle")["Placard" .. i][v == 1 and "Left" or "Right"].ClickDetector) end
                             elseif not Soul.Ghost then SetText("Soul Guitar Puzzle | Ghost") COMMF_:InvokeServer("GuitarPuzzleProgress", "Ghost")
                             elseif not Soul.Trophies then SetText("Soul Guitar Puzzle | Trophies")
@@ -610,6 +633,7 @@ spawn(function()
         end, function(err) warn("Main Error ".. err) StarterGui:SetCore("SendNotification", {Title = "Script ERROR", Text = err, Duration = 5}) end)
     end
 end)
+
 task.spawn(function()
     while task.wait(4) do
         xpcall(function()
@@ -625,21 +649,21 @@ task.spawn(function()
         end, function(err) warn("LL: ".. err) end)
     end
 end)
+
 TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, message)
     if teleportResult == Enum.TeleportResult.GameFull then inHopPP = false
     elseif teleportResult == Enum.TeleportResult.IsTeleporting and (message:find("previous teleport")) then
         StarterGui:SetCore("SendNotification", {Title = "Death Hop Found", Text = message, Duration = 8})
         task.delay(10, function() game:Shutdown() end)
     end
-    -- player.Name -- my LocalPlayer
-    -- teleportResult -- Enum.TeleportResult
-    -- message -- Request experience is full
 end)
+
 GuiService.ErrorMessageChanged:Connect(newcclosure(function()
     if GuiService:GetErrorType() == Enum.ConnectionError.DisconnectErrors then
         while true do TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LocalPlayer) task.wait(5) end
     end
 end))
+
 local plr = game.Players.LocalPlayer
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
@@ -669,17 +693,14 @@ local function BringMob()
     local char = plr.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local hrpChar = char.HumanoidRootPart
-
     local enemies = workspace.Enemies:GetChildren()
     if #enemies == 0 then return end
-
     local totalpos = {}
     for _, v in pairs(enemies) do
         if not totalpos[v.Name] then
             totalpos[v.Name] = GetMobPosition(v.Name)
         end
     end
-
     for _, v in pairs(enemies) do
         local hum = v:FindFirstChild("Humanoid")
         local hrp = v:FindFirstChild("HumanoidRootPart")
@@ -707,4 +728,3 @@ local function BringMob()
 end
 
 RunService.Heartbeat:Connect(BringMob)
---bring 
