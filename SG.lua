@@ -415,6 +415,9 @@ end)
 
 if LocalPlayer.Data.Level.Value < 2300 then LocalPlayer:Kick("Please Farm Level For Get Soul Guitar") end
 local all, done = 0, false
+-- Biến đếm thời gian cho Living Zombie
+local livingZombieTimer = 0
+
 spawn(function()
     while task.wait(0.2) do
         xpcall(function() local c = 0
@@ -561,14 +564,22 @@ spawn(function()
                         else if CheckLocation("Haunted Castle") then require(ReplicatedStorage.DialogueController):Close()
                             if not Soul.Swamp then
                                 -- ================================================================
-                                -- [2.txt STYLE] KILL ALL 6 LIVING ZOMBIES SIMULTANEOUSLY
-                                -- Thread keo TAT CA zombie ve 1 diem + freeze lien tuc
-                                -- FastAttack() hit ALL (khong filter ten) = 6 con/hit
+                                -- [Living Zombie Section with 3 Minute Hop Server Logic]
                                 -- ================================================================
+                                if livingZombieTimer == 0 then livingZombieTimer = tick() end
+                                
+                                -- Nếu quá 3 phút (180s) thì Hop Server
+                                if tick() - livingZombieTimer >= 180 then
+                                    SetText("Living Zombie Timeout! Hopping Server...")
+                                    livingZombieTimer = 0
+                                    HopServer()
+                                    return
+                                end
+
                                 SetText("Soul Guitar Puzzle | Living Zombie")
                                 local ZOMBIE_CENTER = CFrame.new(-10138.3974609375, 138.6524658203125, 5902.89208984375)
                                 local _killingZombies = true
-                                -- Thread 1: Keo TAT CA Living Zombie ve 1 diem + freeze (2.txt dong 8561-8578)
+                                
                                 task.spawn(function()
                                     while _killingZombies do
                                         pcall(function()
@@ -587,22 +598,31 @@ spawn(function()
                                         task.wait()
                                     end
                                 end)
-                                -- Bay den vung zombie
+                                
                                 Tween(CFrame.new(-10160, 170, 5930))
                                 task.wait(1)
-                                -- Main: Danh TAT CA zombie cung luc
-                                -- FastAttack() khong truyen ten = hit ALL enemies trong 65 stud
+                                
                                 repeat task.wait(0.1)
-                                    SetText("Soul Guitar Puzzle | Killing All Living Zombies")
+                                    local timeLeft = math.floor(180 - (tick() - livingZombieTimer))
+                                    SetText("Soul Guitar Puzzle | Killing All Living Zombies\nTime before Hop: " .. timeLeft .. "s")
                                     if HumanoidRootPart then
                                         HumanoidRootPart.CFrame = ZOMBIE_CENTER * CFrame.new(0, 30, 0)
                                     end
                                     FastAttack()
                                     EquipWeapon("Melee")
                                     BringMonster("Living Zombie", 6)
+                                    
+                                    -- Thoát loop nếu quá thời gian
+                                    if tick() - livingZombieTimer >= 180 then break end
                                 until workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon")
+                                
                                 _killingZombies = false
                                 Tween(false)
+                                
+                                -- Reset timer khi xong nhiệm vụ
+                                if workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon") then
+                                    livingZombieTimer = 0
+                                end
                                 -- ================================================================
                             elseif not Soul.Gravestones then SetText("Soul Guitar Puzzle | Gravestones") for i, v in ipairs({2, 2, 1, 2, 1, 1, 1}) do fireclickdetector(CheckMap("Haunted Castle")["Placard" .. i][v == 1 and "Left" or "Right"].ClickDetector) end
                             elseif not Soul.Ghost then SetText("Soul Guitar Puzzle | Ghost") COMMF_:InvokeServer("GuitarPuzzleProgress", "Ghost")
@@ -632,6 +652,7 @@ spawn(function()
         end, function(err) warn("Main Error ".. err) StarterGui:SetCore("SendNotification", {Title = "Script ERROR", Text = err, Duration = 5}) end)
     end
 end)
+
 task.spawn(function()
     while task.wait(4) do
         xpcall(function()
@@ -647,6 +668,7 @@ task.spawn(function()
         end, function(err) warn("LL: ".. err) end)
     end
 end)
+
 TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, message)
     if teleportResult == Enum.TeleportResult.GameFull then inHopPP = false
     elseif teleportResult == Enum.TeleportResult.IsTeleporting and (message:find("previous teleport")) then
@@ -654,11 +676,13 @@ TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, mess
         task.delay(10, function() game:Shutdown() end)
     end
 end)
+
 GuiService.ErrorMessageChanged:Connect(newcclosure(function()
     if GuiService:GetErrorType() == Enum.ConnectionError.DisconnectErrors then
         while true do TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LocalPlayer) task.wait(5) end
     end
 end))
+
 local plr = game.Players.LocalPlayer
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
@@ -723,4 +747,3 @@ local function BringMob()
 end
 
 RunService.Heartbeat:Connect(BringMob)
---bring
