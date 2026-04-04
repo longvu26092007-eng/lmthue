@@ -1,6 +1,7 @@
 --[[
     Script: Moon Status Notifier (FIXED VERSION)
-    Fix: tex nil/false bug, thêm debug prints, đợi game load
+    Author: Grok + Nhai (Vũ)
+    Status: Bỏ Fake Moon + Full Moon chỉ báo khi thật + Near Full & Blue Moon báo bình thường
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -16,7 +17,7 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- ★ FIX 2: Request function — thử tất cả tên phổ biến
+-- ★ FIX 2: Request function
 local req = http_request or request or (syn and syn.request) or (http and http.request) or fluxus_request
 if not req then
     warn("[MoonScan] ❌ Executor không hỗ trợ HTTP request!")
@@ -43,65 +44,35 @@ end
 function GetMoonStatus()
     local sea = GetCurrentSea()
     local tex = ""
-
-    -- FIX: Lấy texture từng bước riêng, KHÔNG dùng and/or chain
     pcall(function()
         if sea == 1 or sea == 3 then
-            -- Thử Sky trước
             local sky = Lighting:FindFirstChild("Sky")
-            if sky then
-                local moonTex = sky.MoonTextureId
-                if moonTex and moonTex ~= "" then
-                    tex = moonTex
-                end
+            if sky and sky.MoonTextureId and sky.MoonTextureId ~= "" then
+                tex = sky.MoonTextureId
             end
-            -- Nếu Sky không có → thử Space_Skybox
             if tex == "" then
                 local spaceSky = Lighting:FindFirstChild("Space_Skybox")
-                if spaceSky then
-                    local moonTex = spaceSky.MoonTextureId
-                    if moonTex and moonTex ~= "" then
-                        tex = moonTex
-                    end
+                if spaceSky and spaceSky.MoonTextureId and spaceSky.MoonTextureId ~= "" then
+                    tex = spaceSky.MoonTextureId
                 end
             end
         elseif sea == 2 then
             local fantasySky = Lighting:FindFirstChild("FantasySky")
-            if fantasySky then
-                local moonTex = fantasySky.MoonTextureId
-                if moonTex and moonTex ~= "" then
-                    tex = moonTex
-                end
+            if fantasySky and fantasySky.MoonTextureId and fantasySky.MoonTextureId ~= "" then
+                tex = fantasySky.MoonTextureId
             end
         end
     end)
 
-    -- ★ FIX: Nếu vẫn rỗng → debug in ra Lighting children
-    if tex == "" then
-        print("[MoonScan] ⚠ tex rỗng! Sea = " .. sea .. " | Scanning Lighting...")
-        pcall(function()
-            for _, child in pairs(Lighting:GetChildren()) do
-                if child:IsA("Sky") then
-                    print("[MoonScan]   Found Sky: " .. child.Name .. " | MoonTexture: " .. tostring(child.MoonTextureId))
-                    if child.MoonTextureId and child.MoonTextureId ~= "" then
-                        tex = child.MoonTextureId  -- Dùng luôn cái tìm được
-                    end
-                end
-            end
-        end)
-    end
-
-    -- Nếu vẫn rỗng → return Normal
     if tex == "" then
         return "Normal Moon"
     end
 
     tex = tostring(tex):gsub("rbxassetid://", "http://www.roblox.com/asset/?id=")
-
     local moonTable = {
         ["http://www.roblox.com/asset/?id=15493317929"] = "Blue Moon",
-        ["http://www.roblox.com/asset/?id=9709149431"]  = "Full Moon (8/8)",
-        ["http://www.roblox.com/asset/?id=9709149052"]  = "Near Full (7/8)",
+        ["http://www.roblox.com/asset/?id=9709149431"] = "Full Moon (8/8)",
+        ["http://www.roblox.com/asset/?id=9709149052"] = "Near Full (7/8)",
     }
     return moonTable[tex] or "Normal Moon"
 end
@@ -119,65 +90,40 @@ end
 local function GetMoonTimer()
     local c2 = Lighting.ClockTime
     local moon = GetMoonStatus()
-
+   
     if moon == "Full Moon (8/8)" then
         if c2 <= 5 then
-            return "🌕 8/8 ACTIVE — End in " .. mmbs(5, c2)
+            return "Full Moon (8/8) - End in " .. mmbs(5, c2)
         elseif c2 > 5 and c2 < 12 then
-            return "🌕 8/8 Fake (daytime) — Real in " .. mmbs(18, c2)
+            return "Full Moon (8/8) - Fake Moon"
         elseif c2 >= 12 and c2 < 18 then
-            return "🌕 8/8 Waiting night — Full in " .. mmbs(18, c2)
+            return "Full Moon (8/8) - Full in " .. mmbs(18, c2)
         else
-            return "🌕 8/8 ACTIVE — End in " .. mmbs(30, c2)
+            return "Full Moon (8/8) - End in " .. mmbs(30, c2)
         end
     elseif moon == "Near Full (7/8)" then
         if c2 < 18 then
-            return "🌖 7/8 — Night in " .. mmbs(18, c2)
+            return "Near Full (7/8) - Full in " .. mmbs(18, c2)
         else
-            return "🌖 7/8 — Active now"
+            return "Near Full (7/8) - Full in " .. mmbs(42, c2)
         end
     elseif moon == "Blue Moon" then
-        if c2 >= 18 or c2 < 5 then
-            return "🔵 Blue Moon ACTIVE"
-        else
-            return "🔵 Blue Moon — Night in " .. mmbs(18, c2)
-        end
+        return "Blue Moon - Active"
     end
-    return "❌ Normal Moon"
+    return tostring(math.floor(c2)) .. " (Normal Moon)"
 end
 
--- Hiện cả 2 dòng: trạng thái hiện tại + khi nào Full
 local function GetFullTimerDisplay()
     local c2 = Lighting.ClockTime
     local moon = GetMoonStatus()
     local lines = {}
-
-    -- Dòng 1: Moon hiện tại là gì
     table.insert(lines, "Moon: " .. moon .. " | Clock: " .. string.format("%.1f", c2))
-
-    -- Dòng 2: Khi nào night (nếu chưa night)
     if c2 >= 5 and c2 < 18 then
         table.insert(lines, "🌙 Night in " .. mmbs(18, c2))
     else
-        table.insert(lines, "🌙 Night NOW — End in " .. (c2 < 5 and mmbs(5, c2) or mmbs(30, c2)))
+        table.insert(lines, "🌙 Night NOW")
     end
-
-    -- Dòng 3: Timer của moon hiện tại
     table.insert(lines, GetMoonTimer())
-
-    -- Dòng 4: Soul Guitar ready?
-    local isNight = (c2 >= 18 or c2 < 5)
-    local isFullMoon = (moon == "Full Moon (8/8)" or moon == "Blue Moon")
-    if isFullMoon and isNight then
-        table.insert(lines, "🎸 SOUL GUITAR: ✅ GO NOW!")
-    elseif isFullMoon and not isNight then
-        table.insert(lines, "🎸 SOUL GUITAR: ⏳ Wait for night...")
-    elseif moon == "Near Full (7/8)" then
-        table.insert(lines, "🎸 SOUL GUITAR: 🟡 Almost — need 8/8")
-    else
-        table.insert(lines, "🎸 SOUL GUITAR: ❌ Need Full Moon")
-    end
-
     return table.concat(lines, "\n")
 end
 
@@ -212,41 +158,23 @@ local function SendToDiscord(moonName)
         "game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)",
         game.PlaceId, game.JobId
     )
-
-    -- JSON data để MoonTeleporter_Reader parse được
-    local jsonData = {
-        player  = LocalPlayer.Name,
-        jobId   = game.JobId,
-        placeId = tostring(game.PlaceId),
-        sea     = tostring(GetCurrentSea()),
-        moon    = moonName,
-        clock   = string.format("%.1f", Lighting.ClockTime),
-        ready   = (moonName == "Full Moon (8/8)" or moonName == "Blue Moon") and (Lighting.ClockTime >= 18 or Lighting.ClockTime < 5),
-        timer   = GetMoonTimer(),
-        players = tostring(#Players:GetPlayers()),
-        time    = tostring(os.time()),
-    }
-
     local data = {
-        content = "```json\n" .. HttpService:JSONEncode(jsonData) .. "\n```",
-        username = LocalPlayer.Name,
-        embeds = {{
-            title = "🌙 MOON STATUS UPDATE",
-            description = "Tự động báo cáo mặt trăng + thời gian",
-            color = 0x00ffff,
-            fields = {
-                {name = "Trạng thái",  value = "```" .. moonName .. "```",            inline = true},
-                {name = "Sea",         value = "```Sea " .. GetCurrentSea() .. "```", inline = true},
-                {name = "Place ID",    value = "```" .. game.PlaceId .. "```",        inline = true},
-                {name = "Người chơi",  value = "```" .. GetPlayerCount() .. "```",    inline = true},
-                {name = "Moon Timer",  value = "```" .. GetMoonTimer() .. "```",      inline = false},
-                {name = "JobID",       value = "```" .. game.JobId .. "```"},
-                {name = "Mã Teleport", value = "```lua\n" .. teleportCode .. "\n```"}
+        ["embeds"] = {{
+            ["title"] = "🌙 MOON STATUS UPDATE",
+            ["description"] = "Tự động báo cáo mặt trăng + thời gian",
+            ["color"] = 0x00ffff,
+            ["fields"] = {
+                {["name"] = "Trạng thái", ["value"] = "```" .. moonName .. "```", ["inline"] = true},
+                {["name"] = "Sea", ["value"] = "```Sea " .. GetCurrentSea() .. "```", ["inline"] = true},
+                {["name"] = "Place ID", ["value"] = "```" .. game.PlaceId .. "```", ["inline"] = true},
+                {["name"] = "Người chơi", ["value"] = "```" .. GetPlayerCount() .. "```", ["inline"] = true},
+                {["name"] = "Moon Timer", ["value"] = "```" .. GetMoonTimer() .. "```", ["inline"] = false},
+                {["name"] = "JobID", ["value"] = "```" .. game.JobId .. "```"},
+                {["name"] = "Mã Teleport", ["value"] = "```lua\n" .. teleportCode .. "\n```"}
             },
-            footer = {text = "Nhai System • " .. os.date("%X")}
+            ["footer"] = {["text"] = "Nhai System • " .. os.date("%X")}
         }}
     }
-
     local success, err = pcall(function()
         req({
             Url = WEBHOOK_URL,
@@ -256,31 +184,19 @@ local function SendToDiscord(moonName)
         })
     end)
     if success then
-        print("[Sender] ✅ Discord:", moonName, "|", GetMoonTimer())
+        print("[Sender] ✅ Discord:", moonName)
     else
         warn("[Sender] ❌ Discord error:", err)
     end
 end
 
 -- ====================== MAIN LOOP ======================
-
--- ★ DEBUG: In ngay khi start để biết script chạy chưa
 print("═══════════════════════════════════════════")
 print("[MoonScan] 🌕 Script STARTED!")
 print("[MoonScan] Sea: " .. GetCurrentSea())
 print("───────────────────────────────────────────")
 print(GetFullTimerDisplay())
 print("═══════════════════════════════════════════")
-
--- ★ DEBUG: In tất cả Sky objects trong Lighting
-pcall(function()
-    print("[MoonScan] Lighting children:")
-    for _, child in pairs(Lighting:GetChildren()) do
-        if child:IsA("Sky") then
-            print("[MoonScan]   " .. child.Name .. " → MoonTextureId = " .. tostring(child.MoonTextureId))
-        end
-    end
-end)
 
 task.spawn(function()
     while true do
@@ -297,19 +213,17 @@ task.spawn(function()
             isGoodMoon = true
         end
 
-        -- ★ Luôn hiện đầy đủ trạng thái mỗi 60s
-        print("───────────────────────────────────────────")
-        print("[" .. os.date("%H:%M:%S") .. "] Scan #" .. (os.time() % 10000))
-        print(GetFullTimerDisplay())
+        print("[" .. os.date("%H:%M:%S") .. "] Scan | Moon: " .. moonStatus .. " | Timer: " .. GetMoonTimer())
 
         if isGoodMoon then
             print("📤 GỬI Discord + Firebase!")
             SendToDiscord(moonStatus)
             SendToFirebase(moonStatus)
+        else
+            print("❌ Không gửi (Fake Moon hoặc không phải moon tốt)")
         end
-
-        print("───────────────────────────────────────────")
-
         task.wait(60)
     end
 end)
+
+print("[Nhai System] Script Sender đã được fix và chạy ổn định!")
