@@ -5,7 +5,7 @@
 ]]
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
-local FIREBASE_URL = "THAY_LINK_FIREBASE_CỦA_BẠN_VÀO_ĐÂY/moon.json" -- BẮT BUỘC CÓ /moon.json
+local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json" -- BẮT BUỘC CÓ /moon.json
 
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
