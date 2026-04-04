@@ -1,5 +1,5 @@
 -- =============================================
--- MOON RECEIVER — TELEPORTSERVICE + PLACEID TỪ FIREBASE
+-- MOON RECEIVER — CHECK PLACEID TRƯỚC RỒI MỚI HOP
 -- =============================================
 repeat task.wait(0.5) until game:IsLoaded() and game.Players.LocalPlayer
 
@@ -17,10 +17,10 @@ if not req then
 end
 
 local lastTeleportTime = 0
-local teleportCooldown = 25   -- 25 giây cooldown (tránh lỗi token)
+local teleportCooldown = 25
 local lastJobId = ""
 
-print("[MoonReceiver] 🔍 Đang lắng nghe Firebase (TeleportService + PlaceId)...")
+print("[MoonReceiver] 🔍 Đang lắng nghe Firebase (Đã thêm Check PlaceId)...")
 
 task.spawn(function()
     while task.wait(5) do
@@ -36,24 +36,31 @@ task.spawn(function()
             if not ok or not resp or not resp.Body or resp.Body == "null" then return end
 
             local data = HttpService:JSONDecode(resp.Body)
-            if not data or not data.jobId then return end
+            if not data or not data.jobId or not data.placeId then return end
 
-            local age = data.time and (os.time() - tonumber(data.time)) or 9999
+            local currentPlaceId = game.PlaceId
+            local targetPlaceId  = tonumber(data.placeId)
+            local age            = data.time and (os.time() - tonumber(data.time)) or 9999
 
-            -- LẤY PLACEID TỪ FIREBASE (như mày nói)
-            local targetPlaceId = tonumber(data.placeId) or game.PlaceId
+            -- ==================== CHECK PLACEID TRƯỚC ====================
+            if targetPlaceId ~= currentPlaceId then
+                warn("[MoonReceiver] ❌ PlaceId không khớp! (Hiện tại: " .. currentPlaceId .. " | Firebase: " .. targetPlaceId .. ")")
+                warn("→ Bỏ qua teleport (khác Sea)")
+                return
+            end
 
+            -- Chỉ hop khi PlaceId khớp
             if age < 600 and data.jobId ~= game.JobId then
                 if tick() - lastTeleportTime >= teleportCooldown then
                     lastTeleportTime = tick()
                     lastJobId = data.jobId
 
-                    print(string.format("[MoonReceiver] ✅ Tín hiệu Moon mới! | %s | PlaceId: %s | %dm ago", 
+                    print(string.format("[MoonReceiver] ✅ Tín hiệu Moon mới! | %s | PlaceId OK (%s) | %dm ago", 
                         data.moon or "Unknown", targetPlaceId, math.floor(age / 60)))
 
-                    print("[MoonReceiver] 🚀 Teleport sang JobID: " .. data.jobId .. " | PlaceId: " .. targetPlaceId)
+                    print("[MoonReceiver] 🚀 Teleport sang JobID: " .. data.jobId)
 
-                    task.wait(2.5) -- Delay quan trọng tránh lỗi token
+                    task.wait(2.5) -- Delay chống lỗi token
 
                     pcall(function()
                         TeleportService:TeleportToPlaceInstance(
@@ -70,4 +77,4 @@ task.spawn(function()
     end
 end)
 
-print("[MoonReceiver] Đã fix xong - Dùng TeleportService + PlaceId từ Firebase!")
+print("[MoonReceiver] Đã fix xong - Check PlaceId trước khi hop!")
