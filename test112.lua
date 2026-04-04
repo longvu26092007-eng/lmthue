@@ -1,7 +1,7 @@
 --[[
-    Script: Moon Status Notifier (Auto-check 1 min + Player Count)
+    Script: Moon Status Notifier (Lặp lại mỗi 1 phút - Không chống trùng)
     Author: Nhai (Vũ) - FPT University
-    Description: Tự động check Moon mỗi 60s, báo số lượng player, không gửi trùng server cũ.
+    Description: Tự động check và gửi báo cáo mỗi 60s nếu đủ điều kiện Moon.
 ]]
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
@@ -9,23 +9,18 @@ local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
--- Khởi tạo bảng lưu trữ các JobId đã gửi để chống trùng lặp
-if not getgenv().SentJobs then
-    getgenv().SentJobs = {}
-end
-
 -- Function lấy Sea
 function GetCurrentSea()
     local mapAttr = workspace:GetAttribute("MAP")
     return mapAttr and tonumber(mapAttr:match("%d+")) or 0
 end
 
--- Function lấy số lượng người chơi (Hiển thị dạng Hiện tại/Tối đa)
+-- Function lấy số lượng người chơi
 function GetPlayerCount()
     return #Players:GetPlayers() .. "/" .. Players.MaxPlayers
 end
 
--- Function kiểm tra mặt trăng (Logic chuẩn từ source của bạn)
+-- Function kiểm tra mặt trăng
 function GetMoonStatus()
     local sea = GetCurrentSea()
     local tex = ""
@@ -59,23 +54,23 @@ function SendToDiscord(moonName)
 
     local data = {
         ["embeds"] = {{
-            ["title"] = "🌙 **MOON STATUS ALERT**",
-            ["description"] = "Hệ thống đã phát hiện server có trăng tốt!",
-            ["color"] = 0x00ff00, -- Màu xanh lá
+            ["title"] = "🌙 **MOON STATUS UPDATE**",
+            ["description"] = "Cập nhật trạng thái mặt trăng hiện tại!",
+            ["color"] = 0x00ffff, -- Màu xanh cyan
             ["fields"] = {
                 {["name"] = "Trạng thái", ["value"] = "```" .. moonName .. "```", ["inline"] = true},
                 {["name"] = "Sea", ["value"] = "```" .. GetCurrentSea() .. "```", ["inline"] = true},
                 {["name"] = "Người chơi", ["value"] = "```" .. GetPlayerCount() .. "```", ["inline"] = true},
                 {["name"] = "JobID", ["value"] = "```" .. game.JobId .. "```"},
-                {["name"] = "Mã Teleport nhanh (Copy vào Executor)", ["value"] = "```lua\n" .. teleportCode .. "\n```"}
+                {["name"] = "Mã Teleport nhanh", ["value"] = "```lua\n" .. teleportCode .. "\n```"}
             },
-            ["footer"] = {["text"] = "Nhai System Monitoring • " .. os.date("%X")}
+            ["footer"] = {["text"] = "Nhai System - Auto Report • " .. os.date("%X")}
         }}
     }
 
     local requestFunc = (syn and syn.request or http_request or request or HttpService.request)
     if requestFunc then
-        local success, err = pcall(function()
+        pcall(function()
             requestFunc({
                 Url = WEBHOOK_URL,
                 Method = "POST",
@@ -83,39 +78,26 @@ function SendToDiscord(moonName)
                 Body = HttpService:JSONEncode(data)
             })
         end)
-        
-        if success then
-            getgenv().SentJobs[game.JobId] = true
-            warn("[Nhai System] Đã gửi dữ liệu server " .. game.JobId .. " lên Discord!")
-        else
-            warn("[Nhai System] Lỗi khi gửi Webhook: " .. tostring(err))
-        end
     end
 end
 
--- Vòng lặp tự động check mỗi 60 giây
+-- Vòng lặp tự động báo mỗi 60 giây (Bỏ qua trùng lặp)
 task.spawn(function()
-    warn("[Nhai System] Bắt đầu tự động kiểm tra Mặt trăng mỗi 1 phút...")
+    warn("[Nhai System] Bắt đầu tự động báo Moon mỗi 1 phút (Spam mode)...")
     
     while true do
         local moonStatus = GetMoonStatus()
         
-        -- Điều kiện gửi: 
-        -- 1. Trăng là Full, Blue hoặc 7/8
-        -- 2. Server này (JobId) chưa được gửi trong phiên làm việc này
+        -- Điều kiện gửi: Chỉ gửi khi trăng tốt (Full, Blue, 7/8)
         local isGoodMoon = (moonStatus == "Full Moon (8/8)" or moonStatus == "Blue Moon" or moonStatus == "Near Full (7/8)")
-        local isAlreadySent = getgenv().SentJobs[game.JobId]
 
         if isGoodMoon then
-            if not isAlreadySent then
-                SendToDiscord(moonStatus)
-            else
-                print("[Nhai System] Server này đã gửi thông báo rồi, đang chờ trăng lặn hoặc đổi server.")
-            end
+            SendToDiscord(moonStatus)
+            print("[Nhai System] Đã gửi báo cáo định kỳ cho server này.")
         else
-            print("[Nhai System] Moon hiện tại: " .. moonStatus .. " (Chưa đạt yêu cầu gửi)")
+            print("[Nhai System] Moon hiện tại: " .. moonStatus .. " (Không báo cáo)")
         end
         
-        task.wait(60) -- Chờ đúng 1 phút để check lại
+        task.wait(60) -- Đúng 1 phút báo 1 lần
     end
 end)
