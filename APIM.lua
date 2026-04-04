@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (FIXED VERSION)
     Author: Grok + Nhai (Vũ)
-    Status: Bỏ Fake Moon + Chỉ giữ Full In và End In cho Full Moon (8/8) + Blue Moon
+    Status: Bỏ Fake Moon + Full Moon (8/8) luôn gửi + Blue Moon
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -10,14 +10,13 @@ local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/m
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait(1) until game.Players.LocalPlayer
 repeat task.wait(1) until game.Players.LocalPlayer.Character
-task.wait(5) -- Đợi MAP attribute + Lighting load
+task.wait(5)
 
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- ★ FIX 2: Request function
 local req = http_request or request or (syn and syn.request) or (http and http.request) or fluxus_request
 if not req then
     warn("[MoonScan] ❌ Executor không hỗ trợ HTTP request!")
@@ -62,9 +61,7 @@ function GetMoonStatus()
             end
         end
     end)
-    if tex == "" then
-        return "Normal Moon"
-    end
+    if tex == "" then return "Normal Moon" end
     tex = tostring(tex):gsub("rbxassetid://", "http://www.roblox.com/asset/?id=")
     local moonTable = {
         ["http://www.roblox.com/asset/?id=15493317929"] = "Blue Moon",
@@ -74,7 +71,7 @@ function GetMoonStatus()
     return moonTable[tex] or "Normal Moon"
 end
 
--- ====================== MOON TIMER (BỎ FAKE MOON, CHỈ GIỮ FULL IN + END IN) ======================
+-- ====================== MOON TIMER ======================
 local function mmbs(inp, c2)
     local ps = inp - c2
     if ps > 1 then
@@ -128,12 +125,7 @@ local function SendToFirebase(moonName)
         moonTimer = GetMoonTimer()
     }
     local success, err = pcall(function()
-        req({
-            Url = FIREBASE_URL,
-            Method = "PATCH",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(dbData)
-        })
+        req({ Url = FIREBASE_URL, Method = "PATCH", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(dbData) })
     end)
     if success then
         print("[Sender] ✅ Firebase:", moonName)
@@ -143,10 +135,7 @@ local function SendToFirebase(moonName)
 end
 
 local function SendToDiscord(moonName)
-    local teleportCode = string.format(
-        "game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)",
-        game.PlaceId, game.JobId
-    )
+    local teleportCode = string.format("game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)", game.PlaceId, game.JobId)
     local data = {
         ["embeds"] = {{
             ["title"] = "🌙 MOON STATUS UPDATE",
@@ -165,12 +154,7 @@ local function SendToDiscord(moonName)
         }}
     }
     local success, err = pcall(function()
-        req({
-            Url = WEBHOOK_URL,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = HttpService:JSONEncode(data)
-        })
+        req({ Url = WEBHOOK_URL, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(data) })
     end)
     if success then
         print("[Sender] ✅ Discord:", moonName)
@@ -190,16 +174,7 @@ print("════════════════════════�
 task.spawn(function()
     while true do
         local moonStatus = GetMoonStatus()
-        local c2 = Lighting.ClockTime
-        local isNight = (c2 >= 18 or c2 < 5)
-        local isGoodMoon = false
-
-        -- Chỉ báo Full Moon thật + Blue Moon (đã bỏ Near Full 7/8 và Fake Moon)
-        if moonStatus == "Full Moon (8/8)" and isNight then
-            isGoodMoon = true
-        elseif moonStatus == "Blue Moon" then
-            isGoodMoon = true
-        end
+        local isGoodMoon = (moonStatus == "Full Moon (8/8)" or moonStatus == "Blue Moon")
 
         print("[" .. os.date("%H:%M:%S") .. "] Scan | Moon: " .. moonStatus .. " | Timer: " .. GetMoonTimer())
 
@@ -208,7 +183,7 @@ task.spawn(function()
             SendToDiscord(moonStatus)
             SendToFirebase(moonStatus)
         else
-            print("❌ Không gửi (Fake Moon hoặc không phải moon tốt)")
+            print("❌ Không gửi")
         end
         task.wait(60)
     end
