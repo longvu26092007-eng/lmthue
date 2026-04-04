@@ -1,5 +1,5 @@
 -- =============================================
--- MOON RECEIVER — FIX LỖI 773 (Check PlaceId + Debug chi tiết)
+-- MOON RECEIVER — TELEPORTSERVICE + LOCALPLAYER BÌNH THƯỜNG
 -- =============================================
 repeat task.wait(0.5) until game:IsLoaded() and game.Players.LocalPlayer
 
@@ -17,15 +17,15 @@ if not req then
 end
 
 local lastTeleportTime = 0
-local teleportCooldown = 35   -- Tăng lên 35 giây để tránh restrict
+local teleportCooldown = 45   -- Tăng để tránh lỗi token
 local lastJobId = ""
 
-print("[MoonReceiver] 🔍 Đang lắng nghe Firebase (Anti-773 Mode)...")
+print("[MoonReceiver] 🔍 Đang lắng nghe Firebase (LocalPlayer bình thường)...")
 
--- Bắt sự kiện teleport fail để debug
-TeleportService.TeleportInitFailed:Connect(function(player, teleportResult, errorMessage)
+-- Bắt lỗi teleport
+TeleportService.TeleportInitFailed:Connect(function(player, result, message)
     if player == LocalPlayer then
-        warn("[MoonReceiver] ❌ TeleportInitFailed | Error: " .. errorMessage .. " | Code: " .. tostring(teleportResult))
+        warn("[MoonReceiver] ❌ Teleport Failed | " .. message)
     end
 end)
 
@@ -51,9 +51,9 @@ task.spawn(function()
 
             print("[MoonReceiver] 📍 Current PlaceId: " .. currentPlaceId .. " | Firebase PlaceId: " .. targetPlaceId)
 
-            -- CHECK PLACEID RẤT RÕ
+            -- Check PlaceId trước
             if targetPlaceId ~= currentPlaceId then
-                warn("[MoonReceiver] ❌ PlaceId KHÔNG KHỚP! Bỏ qua teleport (khác Sea)")
+                warn("[MoonReceiver] ❌ PlaceId không khớp! Bỏ qua teleport")
                 return
             end
 
@@ -62,26 +62,26 @@ task.spawn(function()
                     lastTeleportTime = tick()
                     lastJobId = data.jobId
 
-                    print(string.format("[MoonReceiver] ✅ Tín hiệu Moon OK! | %s | PlaceId khớp | %dm ago", data.moon or "Unknown", math.floor(age / 60)))
-                    print("[MoonReceiver] 🚀 Đang teleport → JobID: " .. data.jobId)
+                    print(string.format("[MoonReceiver] ✅ Moon OK! | %s | %dm ago", data.moon or "Unknown", math.floor(age / 60)))
+                    print("[MoonReceiver] 🚀 Đang teleport sang JobID: " .. data.jobId)
 
-                    task.wait(4) -- Tăng delay lên 4 giây (rất quan trọng)
+                    task.wait(6)   -- Delay lớn
 
                     local success, err = pcall(function()
                         TeleportService:TeleportToPlaceInstance(targetPlaceId, data.jobId, LocalPlayer)
                     end)
 
                     if not success then
-                        warn("[MoonReceiver] ❌ Teleport pcall error: " .. tostring(err))
+                        warn("[MoonReceiver] ❌ Teleport error: " .. tostring(err))
                     end
                 else
-                    print("[MoonReceiver] ⏳ Đang cooldown... còn " .. math.floor(teleportCooldown - (tick() - lastTeleportTime)) .. " giây")
+                    print("[MoonReceiver] ⏳ Còn cooldown: " .. math.floor(teleportCooldown - (tick() - lastTeleportTime)) .. " giây")
                 end
             elseif data.jobId == game.JobId then
-                warn("[MoonReceiver] ❌ Đang ở server Moon rồi!")
+                warn("[MoonReceiver] ❌ Bạn đang ở server Moon rồi!")
             end
-        end, function(err) warn("[MoonReceiver] Error loop: " .. err) end)
+        end, function(err) end)
     end
 end)
 
-print("[MoonReceiver] Đã fix xong - Anti 773 tối đa!")
+print("[MoonReceiver] Đã load xong - Chỉ dùng LocalPlayer + TeleportService!")
