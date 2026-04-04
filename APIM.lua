@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (Fixed Version + Moon Timer)
     Author: Grok + Nhai (Vũ)
-    Status: Đã fix + Place ID + Full Moon In + End Moon In rõ ràng
+    Status: Chỉ báo khi Sea 3 + Full Moon In + End Moon In rõ ràng
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -47,7 +47,7 @@ function GetMoonStatus()
     return moonTable[tex] or "Normal Moon"
 end
 
--- ====================== MOON TIMER (ĐÃ TÍCH HỢP CẢ FULL MOON IN + END MOON IN) ======================
+-- ====================== MOON TIMER (ĐÃ TÍCH HỢP FULL MOON IN + END MOON IN) ======================
 local function mmbs(inp, c2)
     local ps = inp - c2
     if ps > 1 then
@@ -75,7 +75,7 @@ local function GetMoonTimer()
         if c2 < 18 then
             return "Near Full (7/8) - Full in " .. mmbs(18, c2)
         else
-            return "Near Full (7/8) - Full in " .. mmbs(42, c2)   -- 18 + 24
+            return "Near Full (7/8) - Full in " .. mmbs(42, c2)
         end
     elseif moon == "Blue Moon" then
         return "Blue Moon - Active"
@@ -154,21 +154,23 @@ end
 
 -- ====================== MAIN LOOP ======================
 task.spawn(function()
-    warn("[Nhai System] Moon Notifier đã khởi động - Báo mỗi 60 giây (Full Moon In + End Moon In đã tích hợp)")
+    warn("[Nhai System] Moon Notifier đã khởi động - Chỉ báo khi Sea 3")
     while true do
         local moonStatus = GetMoonStatus()
+        local currentSea = GetCurrentSea()
         local isGoodMoon = (moonStatus == "Full Moon (8/8)" or
                            moonStatus == "Blue Moon" or
                            moonStatus == "Near Full (7/8)")
-        if isGoodMoon then
-            print("[Nhai System] 🌙 Moon tốt phát hiện:", moonStatus, "| Timer:", GetMoonTimer())
+
+        if isGoodMoon and currentSea == 3 then
+            print("[Nhai System] 🌙 Moon tốt phát hiện ở Sea 3:", moonStatus, "| Timer:", GetMoonTimer())
             SendToDiscord(moonStatus)
             SendToFirebase(moonStatus)
         else
-            print("[Nhai System] Moon hiện tại:", moonStatus, "(Không gửi) | Timer:", GetMoonTimer())
+            print("[Nhai System] Moon hiện tại:", moonStatus, "(Không gửi - không phải Sea 3) | Timer:", GetMoonTimer())
         end
         task.wait(60)
     end
 end)
 
-print("[Nhai System] Script Sender đã được fix + Full Moon In / End Moon In và chạy ổn định!")
+print("[Nhai System] Script Sender đã được fix + Chỉ báo khi Sea 3 và chạy ổn định!")
