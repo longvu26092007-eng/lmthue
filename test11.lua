@@ -1,5 +1,6 @@
 -- =============================================
 -- 🚀 MOON TELEPORTER — RECEIVER (Đọc Firebase)
+-- Fix lỗi: "previous teleport is in processing"
 -- =============================================
 
 repeat task.wait(0.5) until game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer:FindFirstChildWhichIsA("PlayerGui")
@@ -25,10 +26,13 @@ if not req then
 end
 
 local lastJobId = ""
+local isTeleporting = false -- CỜ TRẠNG THÁI CHỐNG SPAM
 print("[MoonReceiver] 🔍 Đang lắng nghe tín hiệu từ Firebase...")
 
 task.spawn(function()
     while task.wait(10) do
+        if isTeleporting then continue end -- Đang bay rồi thì bỏ qua không quét nữa
+        
         xpcall(function()
             local ok, resp = pcall(function()
                 return req({
@@ -58,6 +62,7 @@ task.spawn(function()
                     ))
                     
                     lastJobId = data.jobId
+                    isTeleporting = true -- Bật cờ khóa dịch chuyển
                     print("[MoonReceiver] 🚀 Đang teleport...")
                     
                     TeleportService:TeleportToPlaceInstance(
@@ -65,6 +70,12 @@ task.spawn(function()
                         data.jobId, 
                         LocalPlayer
                     )
+                    
+                    -- Nếu sau 20 giây mà dịch chuyển thất bại (Roblox lỗi), mở khóa cờ để nó quét lại
+                    task.delay(20, function()
+                        isTeleporting = false
+                    end)
+                    
                 elseif data.jobId == game.JobId and data.jobId ~= lastJobId then
                     lastJobId = data.jobId
                     warn("[MoonReceiver] ❌ Bạn đang ở sẵn server này rồi!")
