@@ -1,6 +1,6 @@
 -- =============================================
--- 🚀 MOON TELEPORTER — FIX LỖI NGOẶC (LINE 52)
--- Tối ưu bởi Nhai (Vũ) - FPT University
+-- 🚀 MOON TELEPORTER — FIX LỖI "EXPECTED ')'"
+-- Tối ưu bởi Nhai (Vũ) - Gộp tham số Request
 -- =============================================
 
 local BOT_TOKEN  = "MTQ4OTc5MTQyMzQ5Nzc2OTA0MA.Gw4RBd.7Y_gg5_VIg8zzLwgBB0G0Ochnp4n7Pn8p97-Hg"
@@ -15,33 +15,32 @@ local LocalPlayer     = Players.LocalPlayer
 local request = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
 
 if not request then
-    warn("[MoonTP] Trình thực thi không hỗ trợ HTTP Request!")
+    warn("[MoonTP] Executor không hỗ trợ HTTP Request!")
     return
 end
 
-print("[MoonTP] 🔍 Đang kết nối Discord qua Proxy...")
+print("[MoonTP] 🔍 Đang kết nối Discord qua RoProxy...")
 
-local url = "https://roproxy.com/api/v10/channels/" .. CHANNEL_ID .. "/messages?limit=20"
+-- Tạo bảng tham số trước để tránh lỗi ngoặc ở dòng 42
+local requestOptions = {
+    Url = "https://roproxy.com/api/v10/channels/" .. CHANNEL_ID .. "/messages?limit=20",
+    Method = "GET",
+    Headers = {
+        ["Authorization"] = "Bot " .. BOT_TOKEN,
+        ["Content-Type"] = "application/json"
+    }
+}
 
-local ok, resp = pcall(function()
-    return request({
-        Url = url,
-        Method = "GET",
-        Headers = {
-            ["Authorization"] = "Bot " .. BOT_TOKEN,
-            ["Content-Type"] = "application/json"
-        }
-    })
-end)
+local ok, resp = pcall(function() return request(requestOptions) end)
 
 if not ok or not resp or not resp.Body then
-    warn("[MoonTP] ❌ Lỗi kết nối API!")
+    warn("[MoonTP] ❌ Lỗi kết nối API hoặc Proxy!")
     return
 end
 
 local messages = HttpService:JSONDecode(resp.Body)
 if not messages or #messages == 0 then
-    warn("[MoonTP] ❌ Không có tin nhắn nào!")
+    warn("[MoonTP] ❌ Không có dữ liệu tin nhắn!")
     return
 end
 
@@ -50,29 +49,25 @@ end
 -- =============================================
 local bestServer = nil
 
-for _, msg in ipairs(messages) do
-    -- Cách parse JSON an toàn hơn để tránh lỗi line 52
+for i = 1, #messages do
+    local msg = messages[i]
+    
+    -- 1. Quét JSON trong code block
     local jsonStr = msg.content and msg.content:match("```json%s*(.-)%s*```")
     if jsonStr then
-        local success, data = pcall(function() 
-            return HttpService:JSONDecode(jsonStr) 
-        end)
-        
+        local success, data = pcall(function() return HttpService:JSONDecode(jsonStr) end)
         if success and data and data.jobId then
-            local age = data.time and (os.time() - tonumber(data.time)) or 0
-            -- Lấy server mới nhất (dưới 10 phút)
-            if age < 600 then
-                bestServer = data
-                bestServer.age = age
-                break
-            end
+            bestServer = data
+            break
         end
     end
 
-    -- Nếu không có JSON code block, tìm trong Fields của Embed
+    -- 2. Quét Fields trong Embed (Dành cho bản sender cũ)
     if not bestServer and msg.embeds and msg.embeds[1] and msg.embeds[1].fields then
+        local fields = msg.embeds[1].fields
         local jId = nil
-        for _, field in ipairs(msg.embeds[1].fields) do
+        for f = 1, #fields do
+            local field = fields[f]
             if field.name:find("JobID") then
                 jId = field.value:match("[%w%-]+")
             elseif field.name:find("Teleport") then
@@ -80,7 +75,7 @@ for _, msg in ipairs(messages) do
             end
         end
         if jId then
-            bestServer = { jobId = jId, placeId = game.PlaceId, age = 0 }
+            bestServer = { jobId = jId, placeId = game.PlaceId }
             break
         end
     end
@@ -90,12 +85,9 @@ end
 -- [ TELEPORT ]
 -- =============================================
 if bestServer and bestServer.jobId then
-    print("[MoonTP] ✅ Tìm thấy: " .. bestServer.jobId)
-    TeleportService:TeleportToPlaceInstance(
-        tonumber(bestServer.placeId) or game.PlaceId,
-        bestServer.jobId,
-        LocalPlayer
-    )
+    print("[MoonTP] ✅ Tìm thấy JobID: " .. bestServer.jobId)
+    print("[MoonTP] 🚀 Đang dịch chuyển...")
+    TeleportService:TeleportToPlaceInstance(tonumber(bestServer.placeId) or game.PlaceId, bestServer.jobId, LocalPlayer)
 else
-    warn("[MoonTP] ❌ Không tìm thấy server Full Moon hợp lệ.")
+    warn("[MoonTP] ❌ Không tìm thấy server hợp lệ!")
 end
