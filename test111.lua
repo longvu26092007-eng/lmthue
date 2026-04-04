@@ -1,6 +1,6 @@
 -- =============================================
--- 🚀 MOON TELEPORTER — RECEIVER (Đọc Firebase)
--- Fix lỗi: "previous teleport is in processing"
+-- 🚀 MOON RECEIVER — CÔNG NGHỆ COOLDOWN TICK()
+-- Chống kẹt Teleport theo chuẩn UI Hub
 -- =============================================
 
 repeat task.wait(0.5) until game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer:FindFirstChildWhichIsA("PlayerGui")
@@ -25,14 +25,14 @@ if not req then
     return 
 end
 
+local lastTeleportTime = 0
+local teleportCooldown = 15 -- CHỜ 15 GIÂY GIỮA CÁC LẦN GỌI TELEPORT (Chống lỗi đỏ)
 local lastJobId = ""
-local isTeleporting = false -- CỜ TRẠNG THÁI CHỐNG SPAM
-print("[MoonReceiver] 🔍 Đang lắng nghe tín hiệu từ Firebase...")
+
+print("[MoonReceiver] 🔍 Đang lắng nghe tín hiệu Firebase...")
 
 task.spawn(function()
-    while task.wait(10) do
-        if isTeleporting then continue end -- Đang bay rồi thì bỏ qua không quét nữa
-        
+    while task.wait(5) do
         xpcall(function()
             local ok, resp = pcall(function()
                 return req({
@@ -54,35 +54,34 @@ task.spawn(function()
             if data.jobId then
                 local age = data.time and (os.time() - tonumber(data.time)) or 9999
                 
-                if age < 600 and data.jobId ~= lastJobId and data.jobId ~= game.JobId then
-                    print(string.format("[MoonReceiver] ✅ Tín hiệu mới! Moon: %s | Sea: %s | %dm ago", 
-                        data.moon or "?", 
-                        data.sea or "?", 
-                        math.floor(age / 60)
-                    ))
+                -- Điều kiện: Trăng mới, JobId khác hiện tại
+                if age < 600 and data.jobId ~= game.JobId then
                     
-                    lastJobId = data.jobId
-                    isTeleporting = true -- Bật cờ khóa dịch chuyển
-                    print("[MoonReceiver] 🚀 Đang teleport...")
-                    
-                    TeleportService:TeleportToPlaceInstance(
-                        tonumber(data.placeId) or game.PlaceId, 
-                        data.jobId, 
-                        LocalPlayer
-                    )
-                    
-                    -- Nếu sau 20 giây mà dịch chuyển thất bại (Roblox lỗi), mở khóa cờ để nó quét lại
-                    task.delay(20, function()
-                        isTeleporting = false
-                    end)
-                    
+                    -- KIỂM TRA COOLDOWN BẰNG TICK() GIỐNG SCRIPT KIA
+                    if tick() - lastTeleportTime >= teleportCooldown then
+                        lastTeleportTime = tick() -- Đặt lại thời gian
+                        lastJobId = data.jobId
+                        
+                        print(string.format("[MoonReceiver] ✅ Tín hiệu mới! Moon: %s | %dm ago", data.moon or "?", math.floor(age / 60)))
+                        print("[MoonReceiver] 🚀 Đang teleport tới: " .. data.jobId)
+                        
+                        -- Dùng pcall bọc lệnh Teleport lại y hệt script mẫu
+                        pcall(function()
+                            TeleportService:TeleportToPlaceInstance(
+                                tonumber(data.placeId) or game.PlaceId, 
+                                data.jobId, 
+                                LocalPlayer
+                            )
+                        end)
+                    else
+                        -- Đang trong thời gian chờ (15s), giữ im lặng để không bị spam lỗi
+                    end
+
                 elseif data.jobId == game.JobId and data.jobId ~= lastJobId then
                     lastJobId = data.jobId
-                    warn("[MoonReceiver] ❌ Bạn đang ở sẵn server này rồi!")
+                    warn("[MoonReceiver] ❌ Bạn đang ở sẵn server có trăng này rồi!")
                 end
             end
-        end, function(err)
-            -- Im lặng bỏ qua lỗi vặt giống Source SG
-        end)
+        end, function(err) end)
     end
 end)
