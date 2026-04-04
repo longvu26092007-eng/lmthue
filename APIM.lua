@@ -1,12 +1,12 @@
 --[[
-    Script: Moon Status Notifier (FIXED VERSION)
+    Script: Moon Status Notifier (FINAL FIXED)
     Author: Grok + Nhai (Vũ)
-    Status: Bỏ Fake Moon + Full Moon (8/8) luôn gửi + Blue Moon
+    Status: Chỉ báo Full Moon (8/8) và Blue Moon + Full In / End In chuẩn
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
 
--- ★ FIX 1: Đợi game load đủ trước khi chạy
+-- ★ Đợi game load
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait(1) until game.Players.LocalPlayer
 repeat task.wait(1) until game.Players.LocalPlayer.Character
@@ -23,56 +23,38 @@ if not req then
     return
 end
 
--- ====================== FUNCTIONS ======================
-function GetCurrentSea()
-    local mapAttr = workspace:GetAttribute("MAP")
-    if mapAttr then
-        return tonumber(tostring(mapAttr):match("%d+")) or 0
+-- ====================== FUNCTIONS (từ GUI mày gửi) ======================
+function getServerTime()
+    local RealTime = tostring(Lighting.ClockTime)
+    local RealTimeTable = RealTime:split(".")
+    local Minute = RealTimeTable[1] or "0"
+    local decimalPart = tonumber(RealTimeTable[2]) or 0
+    local Second = tonumber(decimalPart / 100) * 60
+    return Minute, math.floor(Second)
+end
+
+function MoonTextureId()
+    local sky = Lighting:FindFirstChildOfClass("Sky")
+    if sky and sky.MoonTextureId then
+        return sky.MoonTextureId
     end
-    local placeId = game.PlaceId
-    if placeId == 2753915549 or placeId == 4442272183 then return 1
-    elseif placeId == 7449423635 then return 3
-    else return 0 end
+    return ""
 end
 
-function GetPlayerCount()
-    return #Players:GetPlayers() .. "/" .. Players.MaxPlayers
+function CheckMoon()
+    local moon5 = "http://www.roblox.com/asset/?id=9709149431"   -- Full Moon 8/8
+    local moonBlue = "http://www.roblox.com/asset/?id=15493317929" -- Blue Moon
+    local moonreal = MoonTextureId()
+    
+    if moonreal == moon5 then
+        return "Full Moon"
+    elseif moonreal == moonBlue then
+        return "Blue Moon"
+    end
+    return "Normal Moon"
 end
 
-function GetMoonStatus()
-    local sea = GetCurrentSea()
-    local tex = ""
-    pcall(function()
-        if sea == 1 or sea == 3 then
-            local sky = Lighting:FindFirstChild("Sky")
-            if sky and sky.MoonTextureId and sky.MoonTextureId ~= "" then
-                tex = sky.MoonTextureId
-            end
-            if tex == "" then
-                local spaceSky = Lighting:FindFirstChild("Space_Skybox")
-                if spaceSky and spaceSky.MoonTextureId and spaceSky.MoonTextureId ~= "" then
-                    tex = spaceSky.MoonTextureId
-                end
-            end
-        elseif sea == 2 then
-            local fantasySky = Lighting:FindFirstChild("FantasySky")
-            if fantasySky and fantasySky.MoonTextureId and fantasySky.MoonTextureId ~= "" then
-                tex = fantasySky.MoonTextureId
-            end
-        end
-    end)
-    if tex == "" then return "Normal Moon" end
-    tex = tostring(tex):gsub("rbxassetid://", "http://www.roblox.com/asset/?id=")
-    local moonTable = {
-        ["http://www.roblox.com/asset/?id=15493317929"] = "Blue Moon",
-        ["http://www.roblox.com/asset/?id=9709149431"] = "Full Moon (8/8)",
-        ["http://www.roblox.com/asset/?id=9709149052"] = "Near Full (7/8)",
-    }
-    return moonTable[tex] or "Normal Moon"
-end
-
--- ====================== MOON TIMER ======================
-local function mmbs(inp, c2)
+function mmbs(inp, c2)
     local ps = inp - c2
     if ps > 1 then
         return math.floor(ps) .. " Minutes"
@@ -81,11 +63,12 @@ local function mmbs(inp, c2)
     end
 end
 
-local function GetMoonTimer()
+-- ====================== MOON TIMER (CHỈ FULL IN + END IN) ======================
+function GetMoonTimer()
     local c2 = Lighting.ClockTime
-    local moon = GetMoonStatus()
- 
-    if moon == "Full Moon (8/8)" then
+    local moon = CheckMoon()
+    
+    if moon == "Full Moon" then
         if c2 <= 5 then
             return "Full Moon (8/8) - End in " .. mmbs(5, c2)
         elseif c2 >= 12 and c2 < 18 then
@@ -97,20 +80,6 @@ local function GetMoonTimer()
         return "Blue Moon - Active"
     end
     return tostring(math.floor(c2)) .. " (Normal Moon)"
-end
-
-local function GetFullTimerDisplay()
-    local c2 = Lighting.ClockTime
-    local moon = GetMoonStatus()
-    local lines = {}
-    table.insert(lines, "Moon: " .. moon .. " | Clock: " .. string.format("%.1f", c2))
-    if c2 >= 5 and c2 < 18 then
-        table.insert(lines, "🌙 Night in " .. mmbs(18, c2))
-    else
-        table.insert(lines, "🌙 Night NOW")
-    end
-    table.insert(lines, GetMoonTimer())
-    return table.concat(lines, "\n")
 end
 
 -- ====================== SEND FUNCTIONS ======================
@@ -125,7 +94,12 @@ local function SendToFirebase(moonName)
         moonTimer = GetMoonTimer()
     }
     local success, err = pcall(function()
-        req({ Url = FIREBASE_URL, Method = "PATCH", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(dbData) })
+        req({
+            Url = FIREBASE_URL,
+            Method = "PATCH",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(dbData)
+        })
     end)
     if success then
         print("[Sender] ✅ Firebase:", moonName)
@@ -135,7 +109,10 @@ local function SendToFirebase(moonName)
 end
 
 local function SendToDiscord(moonName)
-    local teleportCode = string.format("game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)", game.PlaceId, game.JobId)
+    local teleportCode = string.format(
+        "game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)",
+        game.PlaceId, game.JobId
+    )
     local data = {
         ["embeds"] = {{
             ["title"] = "🌙 MOON STATUS UPDATE",
@@ -154,7 +131,12 @@ local function SendToDiscord(moonName)
         }}
     }
     local success, err = pcall(function()
-        req({ Url = WEBHOOK_URL, Method = "POST", Headers = {["Content-Type"] = "application/json"}, Body = HttpService:JSONEncode(data) })
+        req({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = HttpService:JSONEncode(data)
+        })
     end)
     if success then
         print("[Sender] ✅ Discord:", moonName)
@@ -168,18 +150,18 @@ print("════════════════════════�
 print("[MoonScan] 🌕 Script STARTED!")
 print("[MoonScan] Sea: " .. GetCurrentSea())
 print("───────────────────────────────────────────")
-print(GetFullTimerDisplay())
+print("Moon: " .. GetMoonStatus() .. " | Timer: " .. GetMoonTimer())
 print("═══════════════════════════════════════════")
 
 task.spawn(function()
     while true do
         local moonStatus = GetMoonStatus()
-        local isGoodMoon = (moonStatus == "Full Moon (8/8)" or moonStatus == "Blue Moon")
+        local isGoodMoon = (moonStatus == "Full Moon" or moonStatus == "Blue Moon")
 
         print("[" .. os.date("%H:%M:%S") .. "] Scan | Moon: " .. moonStatus .. " | Timer: " .. GetMoonTimer())
 
         if isGoodMoon then
-            print("📤 GỬI Discord + Firebase!")
+            print("📤 GỬI Discord + Firebase ngay!")
             SendToDiscord(moonStatus)
             SendToFirebase(moonStatus)
         else
