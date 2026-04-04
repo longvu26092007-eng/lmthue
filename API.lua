@@ -1,117 +1,68 @@
---[[
-    Script: Moon Status Notifier (Lặp lại mỗi 1 phút - Không chống trùng)
-    Author: Nhai (Vũ) - FPT University
-    Description: Tự động check và gửi báo cáo mỗi 60s nếu đủ điều kiện Moon.
-]]
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
+-- =============================================
+-- MOON RECEIVER — FIX CHUẨN BANANA (TeleportToPlaceInstance)
+-- =============================================
+repeat task.wait(0.5) until game:IsLoaded() and game.Players.LocalPlayer
+
+local HttpService      = game:GetService("HttpService")
+local TeleportService  = game:GetService("TeleportService")
+local Players          = game:GetService("Players")
+local LocalPlayer      = Players.LocalPlayer
+
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
-local Lighting = game:GetService("Lighting")
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
--- Function lấy Sea
-function GetCurrentSea()
-    local mapAttr = workspace:GetAttribute("MAP")
-    return mapAttr and tonumber(mapAttr:match("%d+")) or 0
+local req = (syn and syn.request) or (http and http.request) or http_request or request
+
+if not req then
+    warn("[MoonReceiver] ❌ Executor không hỗ trợ HTTP!")
+    return
 end
--- Function lấy số lượng người chơi
-function GetPlayerCount()
-    return #Players:GetPlayers() .. "/" .. Players.MaxPlayers
-end
--- Function kiểm tra mặt trăng
-function GetMoonStatus()
-    local sea = GetCurrentSea()
-    local tex = ""
-    
-    pcall(function()
-        if sea == 1 or sea == 3 then
-            tex = (Lighting:FindFirstChild("Sky") and Lighting.Sky.MoonTextureId) 
-                  or (Lighting:FindFirstChild("Space_Skybox") and Lighting.Space_Skybox.MoonTextureId)
-        elseif sea == 2 then
-            tex = (Lighting:FindFirstChild("FantasySky") and Lighting.FantasySky.MoonTextureId)
-        end
-    end)
-    
-    tex = tostring(tex):gsub("rbxassetid://", "http://www.roblox.com/asset/?id=")
-    
-    local moonTable = {
-        ["http://www.roblox.com/asset/?id=15493317929"] = "Blue Moon",
-        ["http://www.roblox.com/asset/?id=9709149431"] = "Full Moon (8/8)",
-        ["http://www.roblox.com/asset/?id=9709149052"] = "Near Full (7/8)",
-    }
-    
-    return moonTable[tex] or "Normal Moon"
-end
--- Function gửi Firebase
-function SendToFirebase(moonName)
-    local dbData = {
-        jobId = game.JobId,
-        placeId = game.PlaceId,
-        moon = moonName,
-        sea = GetCurrentSea(),
-        time = os.time()
-    }
-    local requestFunc = (syn and syn.request or http_request or request or HttpService.request)
-    if requestFunc then
-        pcall(function()
-            requestFunc({
-                Url = FIREBASE_URL,
-                Method = "PATCH",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = HttpService:JSONEncode(dbData)
-            })
-        end)
-    end
-end
--- Function gửi Webhook
-function SendToDiscord(moonName)
-    local teleportCode = string.format(
-        "game:GetService('TeleportService'):TeleportToPlaceInstance(%d, '%s', game.Players.LocalPlayer)",
-        game.PlaceId, game.JobId
-    )
-    local data = {
-        ["embeds"] = {{
-            ["title"] = "🌙 **MOON STATUS UPDATE**",
-            ["description"] = "Cập nhật trạng thái mặt trăng hiện tại!",
-            ["color"] = 0x00ffff, -- Màu xanh cyan
-            ["fields"] = {
-                {["name"] = "Trạng thái", ["value"] = "" .. moonName .. "", ["inline"] = true},
-                {["name"] = "Sea", ["value"] = "" .. GetCurrentSea() .. "", ["inline"] = true},
-                {["name"] = "Người chơi", ["value"] = "" .. GetPlayerCount() .. "", ["inline"] = true},
-                {["name"] = "JobID", ["value"] = "" .. game.JobId .. ""},
-                {["name"] = "Mã Teleport nhanh", ["value"] = "lua\n" .. teleportCode .. "\n"}
-            },
-            ["footer"] = {["text"] = "Nhai System - Auto Report • " .. os.date("%X")}
-        }}
-    }
-    local requestFunc = (syn and syn.request or http_request or request or HttpService.request)
-    if requestFunc then
-        pcall(function()
-            requestFunc({
-                Url = WEBHOOK_URL,
-                Method = "POST",
-                Headers = {["Content-Type"] = "application/json"},
-                Body = HttpService:JSONEncode(data)
-            })
-        end)
-    end
-end
--- Vòng lặp tự động báo mỗi 60 giây (Bỏ qua trùng lặp)
+
+local lastTeleportTime = 0
+local teleportCooldown = 22   -- Banana hay dùng khoảng 20-25s
+local lastJobId = ""
+
+print("[MoonReceiver] 🔍 Đang lắng nghe Firebase (Kiểu Banana)...")
+
 task.spawn(function()
-    warn("[Nhai System] Bắt đầu tự động báo Moon mỗi 1 phút (Spam mode)...")
-    
-    while true do
-        local moonStatus = GetMoonStatus()
-        
-        -- Điều kiện gửi: Chỉ gửi khi trăng tốt (Full, Blue, 7/8)
-        local isGoodMoon = (moonStatus == "Full Moon (8/8)" or moonStatus == "Blue Moon" or moonStatus == "Near Full (7/8)")
-        if isGoodMoon then
-            SendToDiscord(moonStatus)
-SendToFirebase(moonStatus)
-            print("[Nhai System] Đã gửi báo cáo định kỳ cho server này.")
-        else
-            print("[Nhai System] Moon hiện tại: " .. moonStatus .. " (Không báo cáo)")
-        end
-        
-        task.wait(60) -- Đúng 1 phút báo 1 lần
-    end
+    while task.wait(5) do
+        xpcall(function()
+            local ok, resp = pcall(function()
+                return req({
+                    Url = FIREBASE_URL,
+                    Method = "GET",
+                    Headers = {["Content-Type"] = "application/json"}
+                })
+            end)
+
+            if not ok or not resp or not resp.Body or resp.Body == "null" then return end
+
+            local data = HttpService:JSONDecode(resp.Body)
+            if not data or not data.jobId then return end
+
+            local age = data.time and (os.time() - tonumber(data.time)) or 9999
+
+            if age < 600 and data.jobId ~= game.JobId then
+                if tick() - lastTeleportTime >= teleportCooldown then
+                    lastTeleportTime = tick()
+                    lastJobId = data.jobId
+
+                    print(string.format("[MoonReceiver] ✅ Tín hiệu Moon mới! | %s | %dm ago", data.moon or "Unknown", math.floor(age / 60)))
+                    print("[MoonReceiver] 🚀 Teleport sang JobID: " .. data.jobId)
+
+                    task.wait(1.5) -- delay nhỏ trước khi tele (rất quan trọng)
+
+                    pcall(function()
+                        TeleportService:TeleportToPlaceInstance(
+                            game.PlaceId, 
+                            data.jobId, 
+                            LocalPlayer
+                        )
+                    end)
+                end
+            elseif data.jobId == game.JobId then
+                warn("[MoonReceiver] ❌ Bạn đang ở server có trăng rồi!")
+            end
+        end, function(err) end)
+    end
 end)
+
+print("[MoonReceiver] Đã fix xong theo đúng kiểu Banana Hub!")
