@@ -1,7 +1,6 @@
 -- =============================================
--- 🚀 MOON TELEPORTER — Đọc Discord → Teleport
+-- 🚀 MOON TELEPORTER — Đọc Discord → Teleport (ĐÃ SỬA LỖI)
 -- Tự đọc channel, tìm server Full Moon, teleport vào
--- Đã dọn sạch lỗi khoảng trắng tàng hình (Line 1)
 -- =============================================
 
 local BOT_TOKEN = "MTQ4OTc5MTQyMzQ5Nzc2OTA0MA.Gw4RBd.7Y_gg5_VIg8zzLwgBB0G0Ochnp4n7Pn8p97-Hg"
@@ -50,27 +49,29 @@ print("[MoonTP] 📋 Tìm thấy " .. #messages .. " messages. Đang scan...")
 local bestServer = nil
 
 for _, msg in ipairs(messages) do
-    -- Parse JSON trong code block
-    local jsonStr = msg.content and msg.content:match("```json%s*(.-)%s*```")
-    if jsonStr then
-        -- Đã sửa pcall để không bị lỗi dấu ngoặc
-        local parseOk, data = pcall(function() return HttpService:JSONDecode(jsonStr) end)
-        if parseOk and data and data.jobId then
-            local age = data.time and (os.time() - tonumber(data.time)) or 9999
-            local moon = data.moon or data.Trạng_thái or "?"
+    -- ⚠️ TRÁNH LỖI: kiểm tra msg.content có tồn tại không
+    if msg.content and type(msg.content) == "string" then
+        -- Parse JSON trong code block
+        local jsonStr = msg.content:match("```json%s*(.-)%s*```")
+        if jsonStr then
+            local parseOk, data = pcall(function() return HttpService:JSONDecode(jsonStr) end)
+            if parseOk and data and data.jobId then
+                local age = data.time and (os.time() - tonumber(data.time)) or 9999
+                local moon = data.moon or data.Trạng_thái or "?"
 
-            print(string.format("  → %s | Moon: %s | Sea: %s | %dm ago | %s",
-                data.player or "?",
-                moon,
-                data.sea or "?",
-                math.floor(age / 60),
-                data.jobId:sub(1, 16) .. "..."
-            ))
+                print(string.format("  → %s | Moon: %s | Sea: %s | %dm ago | %s",
+                    data.player or "?",
+                    moon,
+                    data.sea or "?",
+                    math.floor(age / 60),
+                    data.jobId:sub(1, 16) .. "..."
+                ))
 
-            -- Ưu tiên: Full Moon + mới nhất + chưa quá 10 phút
-            if not bestServer and age < 600 then
-                bestServer = data
-                bestServer.age = age
+                -- Ưu tiên: Full Moon + mới nhất + chưa quá 10 phút
+                if not bestServer and age < 600 then
+                    bestServer = data
+                    bestServer.age = age
+                end
             end
         end
     end
@@ -82,14 +83,14 @@ for _, msg in ipairs(messages) do
                 local jobId, placeId, moon
                 for _, field in ipairs(embed.fields) do
                     if field.name and field.name:find("JobID") then
-                        jobId = field.value:match("[%w%-]+")
+                        jobId = field.value and field.value:match("[%w%-]+") or nil
                     end
                     if field.name and field.name:find("Teleport") then
-                        placeId = field.value:match("TeleportToPlaceInstance%((%d+)")
-                        jobId = jobId or field.value:match("'([%w%-]+)'")
+                        placeId = field.value and field.value:match("TeleportToPlaceInstance%((%d+)") or nil
+                        jobId = jobId or (field.value and field.value:match("'([%w%-]+)'") or nil)
                     end
-                    if field.name and field.name:find("Tr%a+ng th%a+i") or (field.name and field.name:find("Moon")) then
-                        moon = field.value:gsub("`", "")
+                    if field.name and (field.name:find("Tr%a+ng th%a+i") or field.name:find("Moon")) then
+                        moon = field.value and field.value:gsub("`", "") or "?"
                     end
                 end
                 if jobId and not bestServer then
@@ -129,9 +130,5 @@ if bestServer.age and bestServer.age > 300 then
 end
 
 print("[MoonTP] 🚀 Đang teleport...")
-
-TeleportService:TeleportToPlaceInstance(
-    tonumber(bestServer.placeId) or game.PlaceId,
-    bestServer.jobId,
-    LocalPlayer
-)
+local targetPlaceId = tonumber(bestServer.placeId) or game.PlaceId
+TeleportService:TeleportToPlaceInstance(targetPlaceId, bestServer.jobId, LocalPlayer)
