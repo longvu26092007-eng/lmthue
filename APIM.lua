@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (FIXED VERSION)
     Author: Grok + Nhai (Vũ)
-    Status: Bỏ Near Full (7/8) + Chỉ báo Full Moon thật (8/8) + Blue Moon + Giữ webhook + database
+    Status: Bỏ Fake Moon + Chỉ giữ Full In và End In cho Full Moon (8/8) + Blue Moon
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -74,7 +74,7 @@ function GetMoonStatus()
     return moonTable[tex] or "Normal Moon"
 end
 
--- ====================== MOON TIMER ======================
+-- ====================== MOON TIMER (BỎ FAKE MOON, CHỈ GIỮ FULL IN + END IN) ======================
 local function mmbs(inp, c2)
     local ps = inp - c2
     if ps > 1 then
@@ -87,12 +87,10 @@ end
 local function GetMoonTimer()
     local c2 = Lighting.ClockTime
     local moon = GetMoonStatus()
-   
+ 
     if moon == "Full Moon (8/8)" then
         if c2 <= 5 then
             return "Full Moon (8/8) - End in " .. mmbs(5, c2)
-        elseif c2 > 5 and c2 < 12 then
-            return "Full Moon (8/8) - Fake Moon"
         elseif c2 >= 12 and c2 < 18 then
             return "Full Moon (8/8) - Full in " .. mmbs(18, c2)
         else
@@ -196,7 +194,7 @@ task.spawn(function()
         local isNight = (c2 >= 18 or c2 < 5)
         local isGoodMoon = false
 
-        -- Chỉ báo Full Moon thật + Blue Moon (bỏ Near Full 7/8)
+        -- Chỉ báo Full Moon thật + Blue Moon (đã bỏ Near Full 7/8 và Fake Moon)
         if moonStatus == "Full Moon (8/8)" and isNight then
             isGoodMoon = true
         elseif moonStatus == "Blue Moon" then
