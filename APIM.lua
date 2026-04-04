@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (Fixed Version + Moon Timer)
     Author: Grok + Nhai (Vũ)
-    Status: Bỏ Fake Moon + Full Moon chỉ báo khi thật + Near Full & Blue Moon báo bình thường
+    Status: Bỏ Fake Moon + Chỉ báo Near Full (7/8) & Full Moon thật (8/8) & Blue Moon
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -65,7 +65,7 @@ local function GetMoonTimer()
         if c2 <= 5 then
             return "Full Moon (8/8) - End in " .. mmbs(5, c2)
         elseif c2 > 5 and c2 < 12 then
-            return "Full Moon (8/8) - Fake Moon"   -- vẫn giữ để hiển thị timer, nhưng không gửi webhook
+            return "Full Moon (8/8) - Fake Moon"   -- vẫn giữ để hiển thị timer, nhưng không gửi
         elseif c2 >= 12 and c2 < 18 then
             return "Full Moon (8/8) - Full in " .. mmbs(18, c2)
         else
@@ -154,7 +154,7 @@ end
 
 -- ====================== MAIN LOOP ======================
 task.spawn(function()
-    warn("[Nhai System] Moon Notifier đã khởi động - Chỉ báo Moon thật (7/8, 8/8, Blue)")
+    warn("[Nhai System] Moon Notifier đã khởi động - Chỉ báo Near Full (7/8), Full Moon thật (8/8), Blue Moon")
     while true do
         local moonStatus = GetMoonStatus()
         local c2 = Lighting.ClockTime
@@ -174,7 +174,7 @@ task.spawn(function()
             SendToDiscord(moonStatus)
             SendToFirebase(moonStatus)
         else
-            print("[Nhai System] Moon hiện tại:", moonStatus, "(Không gửi) | Timer:", GetMoonTimer())
+            print("[Nhai System] Moon hiện tại:", moonStatus, "(Không gửi - Fake Moon hoặc không phải moon tốt)")
         end
         task.wait(60)
     end
