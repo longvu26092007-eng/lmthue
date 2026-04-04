@@ -1,13 +1,18 @@
 --[[
-    Script: Moon Status Notifier (Lặp lại mỗi 1 phút - Không chống trùng)
+    Script: Moon Status Notifier + Firebase Database
     Author: Nhai (Vũ) - FPT University
-    Description: Tự động check và gửi báo cáo mỗi 60s nếu đủ điều kiện Moon.
+    Description: Tự động check và gửi báo cáo mỗi 60s lên cả Discord và Firebase.
 ]]
 
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
+local FIREBASE_URL = "THAY_LINK_FIREBASE_CỦA_BẠN_VÀO_ĐÂY/moon.json" -- BẮT BUỘC CÓ /moon.json
+
 local Lighting = game:GetService("Lighting")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+
+-- Tối ưu hàm request chung cho cả 2 nền tảng
+local requestFunc = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
 
 -- Function lấy Sea
 function GetCurrentSea()
@@ -45,6 +50,29 @@ function GetMoonStatus()
     return moonTable[tex] or "Normal Moon"
 end
 
+-- [MỚI THÊM] Function gửi lên Firebase cho script Auto đọc
+function SendToFirebase(moonName)
+    if not requestFunc or FIREBASE_URL:find("THAY_LINK") then return end
+    
+    local dbData = {
+        jobId = game.JobId,
+        placeId = game.PlaceId,
+        moon = moonName,
+        sea = GetCurrentSea(),
+        time = os.time()
+    }
+    
+    pcall(function()
+        requestFunc({
+            Url = FIREBASE_URL,
+            Method = "PATCH",
+            Headers = {["Content-Type"] = "application/json"},
+            Cookies = {}, -- Fix lỗi Delta
+            Body = HttpService:JSONEncode(dbData)
+        })
+    end)
+end
+
 -- Function gửi Webhook
 function SendToDiscord(moonName)
     local teleportCode = string.format(
@@ -68,13 +96,13 @@ function SendToDiscord(moonName)
         }}
     }
 
-    local requestFunc = (syn and syn.request or http_request or request or HttpService.request)
     if requestFunc then
         pcall(function()
             requestFunc({
                 Url = WEBHOOK_URL,
                 Method = "POST",
                 Headers = {["Content-Type"] = "application/json"},
+                Cookies = {}, -- Fix lỗi Delta
                 Body = HttpService:JSONEncode(data)
             })
         end)
@@ -83,7 +111,7 @@ end
 
 -- Vòng lặp tự động báo mỗi 60 giây (Bỏ qua trùng lặp)
 task.spawn(function()
-    warn("[Nhai System] Bắt đầu tự động báo Moon mỗi 1 phút (Spam mode)...")
+    warn("[Nhai System] Bắt đầu tự động báo Moon (Discord + Firebase) mỗi 1 phút...")
     
     while true do
         local moonStatus = GetMoonStatus()
@@ -93,7 +121,8 @@ task.spawn(function()
 
         if isGoodMoon then
             SendToDiscord(moonStatus)
-            print("[Nhai System] Đã gửi báo cáo định kỳ cho server này.")
+            SendToFirebase(moonStatus) -- Gọi hàm Firebase ở đây
+            print("[Nhai System] Đã đẩy dữ liệu lên Discord và Firebase.")
         else
             print("[Nhai System] Moon hiện tại: " .. moonStatus .. " (Không báo cáo)")
         end
