@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (Fixed Version + Moon Timer)
     Author: Grok + Nhai (Vũ)
-    Status: Đã fix + Thêm Place ID + Time to Full Moon / Time until Moon Ends
+    Status: Đã fix + Thêm Place ID + Time to Full Moon / Time until Moon Ends (Near Full đã có timer)
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -47,7 +47,7 @@ function GetMoonStatus()
     return moonTable[tex] or "Normal Moon"
 end
 
--- ====================== MOON TIMER FUNCTIONS (từ script checker) ======================
+-- ====================== MOON TIMER (ĐÃ FIX Near Full Moon) ======================
 local function mmbs(inp, c2)
     local ps = inp - c2
     if ps > 1 then
@@ -61,23 +61,26 @@ local function GetMoonTimer()
     local c2 = Lighting.ClockTime
     local moon = GetMoonStatus()
     
-    if moon == "Full Moon (8/8)" and c2 <= 5 then
-        return tostring(math.floor(c2)) .. " (End in " .. mmbs(5, c2) .. ")"
-    elseif moon == "Full Moon (8/8)" and (c2 > 5 and c2 < 12) then
-        return tostring(math.floor(c2)) .. " (Fake Moon)"
-    elseif moon == "Full Moon (8/8)" and (c2 > 12 and c2 < 18) then
-        return tostring(math.floor(c2)) .. " (Full in " .. mmbs(18, c2) .. ")"
-    elseif moon == "Full Moon (8/8)" and (c2 > 18 and c2 <= 24) then
-        return tostring(math.floor(c2)) .. " (End in " .. mmbs(30, c2) .. ")"
+    if moon == "Full Moon (8/8)" then
+        if c2 <= 5 then
+            return tostring(math.floor(c2)) .. " (End in " .. mmbs(5, c2) .. ")"
+        elseif c2 > 5 and c2 < 12 then
+            return tostring(math.floor(c2)) .. " (Fake Moon)"
+        elseif c2 > 12 and c2 < 18 then
+            return tostring(math.floor(c2)) .. " (Full in " .. mmbs(18, c2) .. ")"
+        elseif c2 > 18 then
+            return tostring(math.floor(c2)) .. " (End in " .. mmbs(30, c2) .. ")"
+        end
+    elseif moon == "Near Full (7/8)" then
+        if c2 < 18 then
+            return tostring(math.floor(c2)) .. " (Full in " .. mmbs(18, c2) .. ")"
+        else
+            return tostring(math.floor(c2)) .. " (Full in " .. mmbs(42, c2) .. ")"   -- 18 + 24
+        end
+    elseif moon == "Blue Moon" then
+        return tostring(math.floor(c2)) .. " (Blue Moon Active)"
     end
-    
-    if moon == "Near Full (7/8)" and c2 < 12 then
-        return tostring(math.floor(c2)) .. " (Full in " .. mmbs(18, c2) .. ")"
-    elseif moon == "Near Full (7/8)" and c2 > 12 then
-        return tostring(math.floor(c2)) .. " (Full in " .. mmbs(18 + 24, c2) .. ")"
-    end
-    
-    return tostring(math.floor(c2))
+    return tostring(math.floor(c2)) .. " (Normal Moon)"
 end
 
 -- ====================== SEND FUNCTIONS ======================
@@ -89,7 +92,7 @@ local function SendToFirebase(moonName)
         sea = GetCurrentSea(),
         time = os.time(),
         playerCount = GetPlayerCount(),
-        moonTimer = GetMoonTimer()          -- ← THÊM TIME TO FULL MOON / TIME UNTIL END
+        moonTimer = GetMoonTimer()          -- ← Near Full Moon giờ có timer rõ ràng
     }
     local success, err = pcall(function()
         local requestFunc = (syn and syn.request) or (http and http.request) or http_request or request
@@ -124,7 +127,7 @@ local function SendToDiscord(moonName)
                 {["name"] = "Sea", ["value"] = "```Sea " .. GetCurrentSea() .. "```", ["inline"] = true},
                 {["name"] = "Place ID", ["value"] = "```" .. game.PlaceId .. "```", ["inline"] = true},
                 {["name"] = "Người chơi", ["value"] = "```" .. GetPlayerCount() .. "```", ["inline"] = true},
-                {["name"] = "Moon Timer", ["value"] = "```" .. GetMoonTimer() .. "```", ["inline"] = false},  -- ← THÊM TIME TO NIGHT Ở ĐÂY
+                {["name"] = "Moon Timer", ["value"] = "```" .. GetMoonTimer() .. "```", ["inline"] = false},
                 {["name"] = "JobID", ["value"] = "```" .. game.JobId .. "```"},
                 {["name"] = "Mã Teleport", ["value"] = "```lua\n" .. teleportCode .. "\n```"}
             },
@@ -151,7 +154,7 @@ end
 
 -- ====================== MAIN LOOP ======================
 task.spawn(function()
-    warn("[Nhai System] Moon Notifier đã khởi động - Báo mỗi 60 giây (có Moon Timer)")
+    warn("[Nhai System] Moon Notifier đã khởi động - Báo mỗi 60 giây (Near Full Moon đã có timer)")
     while true do
         local moonStatus = GetMoonStatus()
         local isGoodMoon = (moonStatus == "Full Moon (8/8)" or
@@ -168,4 +171,4 @@ task.spawn(function()
     end
 end)
 
-print("[Nhai System] Script Sender đã được fix + thêm Moon Timer và chạy ổn định!")
+print("[Nhai System] Script Sender đã được fix + Near Full Moon có timer và chạy ổn định!")
