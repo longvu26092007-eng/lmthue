@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (Fixed Version + Moon Timer)
     Author: Grok + Nhai (Vũ)
-    Status: Báo mọi sea khi gặp Full Moon (8/8) / Near Full (7/8) / Blue Moon
+    Status: Bỏ Fake Moon + Full Moon chỉ báo khi thật + Near Full & Blue Moon báo bình thường
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -47,7 +47,7 @@ function GetMoonStatus()
     return moonTable[tex] or "Normal Moon"
 end
 
--- ====================== MOON TIMER (Full Moon In + End Moon In) ======================
+-- ====================== MOON TIMER ======================
 local function mmbs(inp, c2)
     local ps = inp - c2
     if ps > 1 then
@@ -65,7 +65,7 @@ local function GetMoonTimer()
         if c2 <= 5 then
             return "Full Moon (8/8) - End in " .. mmbs(5, c2)
         elseif c2 > 5 and c2 < 12 then
-            return "Full Moon (8/8) - Fake Moon"
+            return "Full Moon (8/8) - Fake Moon"   -- vẫn giữ để hiển thị timer, nhưng không gửi webhook
         elseif c2 >= 12 and c2 < 18 then
             return "Full Moon (8/8) - Full in " .. mmbs(18, c2)
         else
@@ -154,12 +154,20 @@ end
 
 -- ====================== MAIN LOOP ======================
 task.spawn(function()
-    warn("[Nhai System] Moon Notifier đã khởi động - Báo mọi sea khi gặp Moon tốt")
+    warn("[Nhai System] Moon Notifier đã khởi động - Chỉ báo Moon thật (7/8, 8/8, Blue)")
     while true do
         local moonStatus = GetMoonStatus()
-        local isGoodMoon = (moonStatus == "Full Moon (8/8)" or
-                           moonStatus == "Blue Moon" or
-                           moonStatus == "Near Full (7/8)")
+        local c2 = Lighting.ClockTime
+        local isNight = (c2 >= 18 or c2 < 5)
+        local isGoodMoon = false
+
+        if moonStatus == "Full Moon (8/8)" and isNight then
+            isGoodMoon = true
+        elseif moonStatus == "Near Full (7/8)" then
+            isGoodMoon = true
+        elseif moonStatus == "Blue Moon" then
+            isGoodMoon = true
+        end
 
         if isGoodMoon then
             print("[Nhai System] 🌙 Moon tốt phát hiện:", moonStatus, "| Timer:", GetMoonTimer())
@@ -172,4 +180,4 @@ task.spawn(function()
     end
 end)
 
-print("[Nhai System] Script Sender đã được fix + Báo mọi sea khi gặp Moon tốt và chạy ổn định!")
+print("[Nhai System] Script Sender đã được fix + Không báo Fake Moon và chạy ổn định!")
