@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (FINAL FIXED)
     Author: Grok + Nhai (Vũ)
-    Status: Fix workspace nil + Chỉ báo Full Moon (8/8) và Blue Moon (bất kể ngày đêm)
+    Status: Fix workspace nil + Bất kể ngày đêm, chỉ gửi khi Full Moon (8/8) hoặc Blue Moon
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
