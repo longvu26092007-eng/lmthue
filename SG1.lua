@@ -458,6 +458,7 @@ local function FetchFirebaseMoonJobId(triedJobIds)
     local playerNum = GetPlayerCountNum(data.playerCount)
 
     if age >= 600 then return nil, "Tín hiệu cũ (" .. math.floor(age/60) .. " phút)" end
+    if data.placeId and tonumber(data.placeId) ~= game.PlaceId then return nil, "Khác PlaceId (Sea khác)" end
     if data.jobId == game.JobId then return nil, "Đang ở server này rồi" end
     if playerNum > 10 then return nil, "Server đông (" .. playerNum .. " người)" end
     if triedJobIds[data.jobId] then return nil, "JobId đã thử: " .. data.jobId:sub(1,8) .. "..." end
