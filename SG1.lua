@@ -245,7 +245,7 @@ HopServer = function(Reason, MaxPlayers, ForcedRegion)
             ServerData = ArrayServers[Index]
             if ServerData then
                 if not MaxPlayers or ServerData.Players < 5 then
-                    if not ForcedRegion or ServerData.Regoin == ForcedRegion then
+                    if not ForcedRegion or ServerData.Region == ForcedRegion then
                         print("Found Server:", ServerData.JobId, 'Player Count:', ServerData.Players, "Region:", ServerData.Region)
                         break
                     end
@@ -413,9 +413,108 @@ KillMonster=(function(x)
     end,function(e) warn("Modules ERROR:",e) end)
 end)
 
+-- ==========================================
+-- [ FIREBASE MOON JOIN ]
+-- Mỗi lần thử gọi lại Firebase để lấy JobID MỚI
+-- 3 lần fail → fallback HopServer
+-- ==========================================
+local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
+local _firebaseReq = (syn and syn.request) or (http and http.request) or http_request or request
+
+function TPServer(JobIdorstring)
+    if string.find(JobIdorstring, "TeleportService") then
+        local ok, err = pcall(function()
+            loadstring(JobIdorstring)()
+        end)
+        return ok and "Success | Teleporting..." or err
+    else
+        game:GetService("ReplicatedStorage").__ServerBrowser:InvokeServer("teleport", tostring(JobIdorstring))
+        return "Trying to teleport..."
+    end
+end
+
+local function GetPlayerCountNum(str)
+    if not str then return 999 end
+    return tonumber(str:match("(%d+)/")) or 999
+end
+
+-- Fetch Firebase 1 lần, trả về jobId hợp lệ hoặc nil + lý do
+local function FetchFirebaseMoonJobId(triedJobIds)
+    local ok, resp = pcall(function()
+        return _firebaseReq({
+            Url = FIREBASE_URL,
+            Method = "GET",
+            Headers = {["Content-Type"] = "application/json"}
+        })
+    end)
+    if not ok or not resp or not resp.Body or resp.Body == "null" then
+        return nil, "Không có dữ liệu"
+    end
+
+    local data = HttpService:JSONDecode(resp.Body)
+    if not data or not data.jobId then return nil, "Không có jobId" end
+
+    local age = data.time and (os.time() - tonumber(data.time)) or 9999
+    local playerNum = GetPlayerCountNum(data.playerCount)
+
+    if age >= 600 then return nil, "Tín hiệu cũ (" .. math.floor(age/60) .. " phút)" end
+    if data.jobId == game.JobId then return nil, "Đang ở server này rồi" end
+    if playerNum > 10 then return nil, "Server đông (" .. playerNum .. " người)" end
+    if triedJobIds[data.jobId] then return nil, "JobId đã thử: " .. data.jobId:sub(1,8) .. "..." end
+
+    return data.jobId, data.moon or "Moon", playerNum
+end
+
+-- 3 lần thử, mỗi lần fetch Firebase lấy JobID mới
+local function TryFirebaseMoonHop()
+    if not _firebaseReq then
+        warn("[FirebaseMoon] Executor không hỗ trợ HTTP!")
+        return false
+    end
+
+    local triedJobIds = {} -- Nhớ JobID đã thử để không lặp lại
+
+    for attempt = 1, 3 do
+        SetText(string.format("🌕 Firebase Moon | Lần %d/3 — Đang lấy JobID...", attempt))
+
+        -- Delay 3 giây giữa các lần (trừ lần đầu)
+        if attempt > 1 then
+            for countdown = 3, 1, -1 do
+                SetText(string.format("🌕 Firebase Moon | Lần %d/3 — Chờ %ds lấy JobID mới...", attempt, countdown))
+                task.wait(1)
+            end
+        end
+
+        local jobId, infoOrReason, playerNum = FetchFirebaseMoonJobId(triedJobIds)
+
+        if jobId then
+            triedJobIds[jobId] = true
+            SetText(string.format("🌕 Firebase Moon | Lần %d/3\n%s | %d người | Joining...",
+                attempt, infoOrReason, playerNum))
+            print(string.format("[FirebaseMoon] Lần %d/3 → JobId: %s | %s | %d người",
+                attempt, jobId:sub(1,12), infoOrReason, playerNum))
+
+            task.wait(1)
+            local result = TPServer(jobId)
+            print(string.format("[FirebaseMoon] Lần %d/3 → TPServer: %s", attempt, tostring(result)))
+
+            -- Đợi 3 giây xem teleport thành công chưa
+            task.wait(3)
+            -- Nếu vẫn ở đây → chưa join được → tiếp lần sau
+        else
+            print(string.format("[FirebaseMoon] Lần %d/3 → Bỏ qua: %s", attempt, tostring(infoOrReason)))
+            SetText(string.format("🌕 Firebase Moon | Lần %d/3 — %s", attempt, tostring(infoOrReason)))
+            task.wait(2)
+        end
+    end
+
+    print("[FirebaseMoon] 3 lần đều fail → Fallback HopServer")
+    return false
+end
+-- ==========================================
+
 if LocalPlayer.Data.Level.Value < 2300 then LocalPlayer:Kick("Please Farm Level For Get Soul Guitar") end
 local all, done = 0, false
--- Biến đếm thời gian cho Living Zombie
 local livingZombieTimer = 0
 
 spawn(function()
@@ -559,7 +658,17 @@ spawn(function()
                                 else SetText("Waiting for Full Moon")
                                 end
                             else
-                                SetText("Hop Server Full Moon") HopServer()
+                                -- ============================================================
+                                -- [MỚI] Firebase Moon Join — 3 lần fetch JobID mới từ Firebase
+                                -- Mỗi lần gọi lại Firebase để lấy JobID khác
+                                -- 3 lần fail hết → fallback HopServer Full Moon
+                                -- ============================================================
+                                SetText("🌕 Firebase Moon | Đang tìm server Full Moon...")
+                                local firebaseOk = TryFirebaseMoonHop()
+                                if not firebaseOk then
+                                    SetText("🌕 Firebase fail → Hop Server Full Moon...")
+                                    HopServer()
+                                end
                             end
                         else if CheckLocation("Haunted Castle") then require(ReplicatedStorage.DialogueController):Close()
                             if not Soul.Swamp then
@@ -568,7 +677,6 @@ spawn(function()
                                 -- ================================================================
                                 if livingZombieTimer == 0 then livingZombieTimer = tick() end
                                 
-                                -- Nếu quá 3 phút (180s) thì Hop Server
                                 if tick() - livingZombieTimer >= 180 then
                                     SetText("Living Zombie Timeout! Hopping Server...")
                                     livingZombieTimer = 0
@@ -612,14 +720,12 @@ spawn(function()
                                     EquipWeapon("Melee")
                                     BringMonster("Living Zombie", 6)
                                     
-                                    -- Thoát loop nếu quá thời gian
                                     if tick() - livingZombieTimer >= 180 then break end
                                 until workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon")
                                 
                                 _killingZombies = false
                                 Tween(false)
                                 
-                                -- Reset timer khi xong nhiệm vụ
                                 if workspace.Map["Haunted Castle"].Swamp.SwampWater.BrickColor ~= BrickColor.new("Maroon") then
                                     livingZombieTimer = 0
                                 end
