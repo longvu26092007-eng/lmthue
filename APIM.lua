@@ -1,7 +1,7 @@
 --[[
     Script: Moon Status Notifier (FINAL FIXED)
     Author: Grok + Nhai (Vũ)
-    Status: Bất kể ngày đêm, chỉ gửi khi Full Moon (8/8) hoặc Blue Moon + giữ Full In / End In
+    Status: Chỉ báo khi ở Sea 3 + Full Moon (8/8) hoặc Blue Moon + Full In / End In
 ]]
 local WEBHOOK_URL = "https://discord.com/api/webhooks/1489793523061493971/aJXQs_TwLw1e9WIHqhb-XGbI8EY2zxPUrjV64cOKNgTKMYYqniuJWBRz0Fsk9QitcRXj"
 local FIREBASE_URL = "https://apimoon-vunguyenlong-default-rtdb.firebaseio.com/moon.json"
@@ -21,6 +21,16 @@ local req = http_request or request or (syn and syn.request) or (http and http.r
 if not req then
     warn("[MoonScan] ❌ Executor không hỗ trợ HTTP request!")
     return
+end
+
+-- ====================== SEA CHECK (dùng bảng place ID mày đưa) ======================
+local SEA_1 = {["2753915549"] = true, ["85211729168715"] = true}
+local SEA_2 = {["4442272183"] = true, ["79091703265657"] = true}
+local SEA_3 = {["7449423635"] = true, ["100117331123089"] = true}
+
+function IsSea3()
+    local placeId = tostring(game.PlaceId)
+    return SEA_3[placeId] == true
 end
 
 -- ====================== FUNCTIONS ======================
@@ -93,20 +103,6 @@ local function GetMoonTimer()
     return tostring(math.floor(c2)) .. " (Normal Moon)"
 end
 
-local function GetFullTimerDisplay()
-    local c2 = Lighting.ClockTime
-    local moon = GetMoonStatus()
-    local lines = {}
-    table.insert(lines, "Moon: " .. moon .. " | Clock: " .. string.format("%.1f", c2))
-    if c2 >= 5 and c2 < 18 then
-        table.insert(lines, "🌙 Night in " .. mmbs(18, c2))
-    else
-        table.insert(lines, "🌙 Night NOW")
-    end
-    table.insert(lines, GetMoonTimer())
-    return table.concat(lines, "\n")
-end
-
 -- ====================== SEND FUNCTIONS ======================
 local function SendToFirebase(moonName)
     local dbData = {
@@ -169,15 +165,16 @@ task.spawn(function()
     while true do
         local moonStatus = GetMoonStatus()
         local isGoodMoon = (moonStatus == "Full Moon (8/8)" or moonStatus == "Blue Moon")
+        local isSea3 = IsSea3()
 
-        print("[" .. os.date("%H:%M:%S") .. "] Scan | Moon: " .. moonStatus .. " | Timer: " .. GetMoonTimer())
+        print("[" .. os.date("%H:%M:%S") .. "] Scan | Moon: " .. moonStatus .. " | Timer: " .. GetMoonTimer() .. " | Sea 3: " .. tostring(isSea3))
 
-        if isGoodMoon then
-            print("📤 GỬI Discord + Firebase ngay!")
+        if isGoodMoon and isSea3 then
+            print("📤 GỬI Discord + Firebase ngay! (Sea 3)")
             SendToDiscord(moonStatus)
             SendToFirebase(moonStatus)
         else
-            print("❌ Không gửi (không phải Full Moon hoặc Blue Moon)")
+            print("❌ Không gửi (không phải Sea 3 hoặc không phải moon tốt)")
         end
         task.wait(60)
     end
