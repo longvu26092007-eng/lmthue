@@ -82,21 +82,22 @@ end
 --[[
     Bảng phân loại Moon dựa trên texture + ClockTime:
 
-    ┌──────────────────┬───────────────┬─────────────────────────────────────┐
-    │ Texture          │ ClockTime     │ Kết quả                            │
-    ├──────────────────┼───────────────┼─────────────────────────────────────┤
-    │ 9709149431 (8/8) │ 18–24 hoặc 0–5│ ✅ Real Full Moon (đêm, moon thật) │
-    │ 9709149431 (8/8) │ 5–12          │ ❌ Fake Moon (sáng, moon giả)      │
-    │ 9709149431 (8/8) │ 12–18         │ ⏳ Full Moon Coming (chiều, sắp tối)│
-    │ 9709149052 (7/8) │ bất kỳ        │ 🔶 Next Night (đêm sau sẽ full)   │
-    │ 15493317929      │ bất kỳ        │ 🔵 Blue Moon                      │
-    │ khác / rỗng      │ bất kỳ        │ ⚪ Normal Moon                     │
-    └──────────────────┴───────────────┴─────────────────────────────────────┘
+    ┌──────────────────┬───────────────┬─────────────────────────────────────────┐
+    │ Texture          │ ClockTime     │ Kết quả                                │
+    ├──────────────────┼───────────────┼─────────────────────────────────────────┤
+    │ 9709149431 (8/8) │ đêm, còn > 7m │ ✅ Real Full Moon (gửi, đủ time join) │
+    │ 9709149431 (8/8) │ đêm, còn ≤ 7m │ ⌛ Full Moon Ending (không gửi)       │
+    │ 9709149431 (8/8) │ 5–12          │ ❌ Fake Moon (sáng, moon giả)          │
+    │ 9709149431 (8/8) │ 12–18         │ ⏳ Full Moon Coming (chiều, sắp tối)   │
+    │ 9709149052 (7/8) │ bất kỳ        │ 🔶 Next Night (gửi kèm timer)         │
+    │ 15493317929      │ bất kỳ        │ 🔵 Blue Moon (gửi)                     │
+    │ khác / rỗng      │ bất kỳ        │ ⚪ Normal Moon                         │
+    └──────────────────┴───────────────┴─────────────────────────────────────────┘
 
     CHỈ GỬI WEBHOOK + FIREBASE KHI:
     - Real Full Moon (texture 8/8 + đêm thật: ClockTime >= 18 hoặc < 5)
     - Blue Moon (bất kỳ lúc nào)
-    - Next Night 7/8 (gửi kèm timer đến Full Moon để chuẩn bị)
+    - Next Night 7/8 CHỈ KHI còn ≤ 7 phút đến Full Moon
 ]]
 
 local MOON_TEXTURES = {
@@ -122,16 +123,36 @@ function ClassifyMoon()
         }
     end
 
-    -- Full Moon 8/8 — cần kiểm tra Fake
+    -- Full Moon 8/8 — cần kiểm tra Fake + thời gian còn lại
     if tex == MOON_TEXTURES.FULL_8 then
         -- Đêm thật: 18h → 24h → 0h → 5h
         if c2 >= 18 or c2 < 5 then
-            return {
-                type = "Real Full Moon (8/8)",
-                real = true,      -- ✅ Gửi webhook
-                emoji = "🌕",
-                color = 0x00FF7F,
-            }
+            -- Tính thời gian còn lại trước khi Full Moon kết thúc (hết lúc 5h)
+            local remaining
+            if c2 >= 18 then
+                remaining = 29 - c2   -- 24 + 5 = 29 (wrap qua nửa đêm)
+            else
+                remaining = 5 - c2    -- 0h → 5h
+            end
+
+            -- ★ CHỈ GỬI nếu còn > 7 phút (đủ thời gian để join)
+            if remaining > 7 then
+                return {
+                    type = "Real Full Moon (8/8)",
+                    real = true,      -- ✅ Gửi webhook (còn đủ thời gian)
+                    emoji = "🌕",
+                    color = 0x00FF7F,
+                    timeRemaining = math.floor(remaining) .. " Minutes",
+                }
+            else
+                return {
+                    type = "Full Moon Ending (8/8)",
+                    real = false,     -- ❌ Không gửi (còn ≤ 7 phút, không kịp join)
+                    emoji = "⌛",
+                    color = 0xFF8800,
+                    timeRemaining = math.floor(remaining * 60) .. " Seconds",
+                }
+            end
         end
 
         -- Sáng: 5h → 12h — FAKE MOON
@@ -155,24 +176,28 @@ function ClassifyMoon()
         end
     end
 
-    -- Near Full 7/8 — đêm sau sẽ full, GỬI để chuẩn bị
+    -- Near Full 7/8 — CHỈ gửi khi còn ≤ 7 phút đến Full Moon
     if tex == MOON_TEXTURES.NEAR_7 then
-        -- Tính thời gian còn lại đến Full Moon (dựa theo checktimemoon.txt)
-        local timeLeft
+        -- Tính số phút còn lại đến Full Moon (dựa theo checktimemoon.txt)
+        local minutesLeft
         if c2 < 12 then
             -- Sáng sớm: Full Moon tối nay lúc 18h
-            timeLeft = math.floor(18 - c2) .. " Minutes"
+            minutesLeft = math.floor(18 - c2)
         else
             -- Chiều/tối: Full Moon tối MAI lúc 18h (18 + 24 = 42)
-            timeLeft = math.floor(42 - c2) .. " Minutes"
+            minutesLeft = math.floor(42 - c2)
         end
+
+        local timeLeft = minutesLeft .. " Minutes"
+        local shouldSend = (minutesLeft <= 7)  -- ★ Chỉ gửi khi ≤ 7 phút
 
         return {
             type = "Next Night (7/8)",
-            real = true,          -- ✅ GỬI webhook để chuẩn bị
-            emoji = "🌖",
-            color = 0xFFAA00,
+            real = shouldSend,        -- ✅ true khi ≤ 7 min, ❌ false khi > 7 min
+            emoji = shouldSend and "🌖" or "⏳",
+            color = shouldSend and 0xFFAA00 or 0x888888,
             timeToFull = timeLeft,
+            minutesToFull = minutesLeft,
         }
     end
 
@@ -225,15 +250,14 @@ function GetMoonTimer()
         return "🔵 Blue Moon — Active!"
     end
 
-    -- Real Full Moon (đêm, 18h–5h)
+    -- Real Full Moon (đêm, còn > 7 phút)
     if moon.type == "Real Full Moon (8/8)" then
-        if c2 >= 18 then
-            -- 18h → 24h: tính đến khi hết đêm (5h sáng = 29h tính từ 0)
-            return "🌕 Full Moon — End in " .. FormatTimeLeft(29, c2)
-        else
-            -- 0h → 5h: tính đến 5h
-            return "🌕 Full Moon — End in " .. FormatTimeLeft(5, c2)
-        end
+        return "🌕 Full Moon — End in " .. (moon.timeRemaining or FormatTimeLeft(5, c2))
+    end
+
+    -- Full Moon Ending (đêm, còn ≤ 7 phút — không gửi)
+    if moon.type == "Full Moon Ending (8/8)" then
+        return "⌛ Full Moon sắp hết — " .. (moon.timeRemaining or "< 7 Minutes") .. " (không gửi)"
     end
 
     -- Fake Moon (sáng, 5h–12h)
@@ -246,17 +270,14 @@ function GetMoonTimer()
         return "⏳ Full Moon in " .. FormatTimeLeft(18, c2)
     end
 
-    -- Next Night 7/8 — gửi kèm timer đến Full Moon
+    -- Next Night 7/8 — chỉ gửi khi ≤ 7 phút
     if moon.type == "Next Night (7/8)" then
-        -- Logic từ checktimemoon.txt:
-        -- c2 < 12  → Full Moon tối nay lúc 18h  → mmbs(18, c2)
-        -- c2 >= 12 → Full Moon tối mai lúc 18h  → mmbs(42, c2)
+        local mins = moon.minutesToFull or 999
+        local sendStatus = mins <= 7 and "✅ GỬI" or "⏳ chờ ≤7 min"
         if c2 < 12 then
-            return "🌖 Next Night — Full Moon in " .. FormatTimeLeft(18, c2) .. " (tonight)"
+            return "🌖 Next Night — Full Moon in " .. FormatTimeLeft(18, c2) .. " (tonight) [" .. sendStatus .. "]"
         else
-            local diff = 42 - c2
-            local mins = math.floor(diff)
-            return "🌖 Next Night — Full Moon in " .. mins .. " Minutes (tomorrow night)"
+            return "🌖 Next Night — Full Moon in " .. mins .. " Minutes (tomorrow) [" .. sendStatus .. "]"
         end
     end
 
@@ -336,6 +357,15 @@ function SendToDiscord(moonData)
         })
     end
 
+    -- Thêm field "Thời gian còn lại" nếu là Real Full Moon
+    if moonData.timeRemaining then
+        table.insert(fields, {
+            ["name"] = "⏰ Còn lại",
+            ["value"] = "```" .. moonData.timeRemaining .. "```",
+            ["inline"] = true,
+        })
+    end
+
     table.insert(fields, {["name"] = "Game Time",   ["value"] = "```" .. string.format("%02d:%02d", GetServerTime()) .. " (" .. GetDayNight() .. ")" .. "```", ["inline"] = true})
     table.insert(fields, {["name"] = "Place ID",    ["value"] = "```" .. game.PlaceId .. "```",        ["inline"] = true})
     table.insert(fields, {["name"] = "Job ID",      ["value"] = "```" .. game.JobId .. "```",          ["inline"] = false})
@@ -346,6 +376,8 @@ function SendToDiscord(moonData)
             ["title"] = moonData.emoji .. " MOON DETECTED — " .. moonData.type,
             ["description"] = moonData.timeToFull
                 and ("⏰ Full Moon trong **" .. moonData.timeToFull .. "** — chuẩn bị sẵn!")
+                or moonData.timeRemaining
+                and ("🌕 Full Moon còn **" .. moonData.timeRemaining .. "** — join ngay!")
                 or "Tự động phát hiện mặt trăng thật + thời gian chính xác",
             ["color"] = moonData.color,
             ["fields"] = fields,
@@ -394,9 +426,9 @@ task.spawn(function()
         ))
 
         -- ★ CHỈ GỬI KHI:
-        --   1. Moon thật (Real Full Moon hoặc Blue Moon)  → moonData.real == true
-        --   2. Đang ở Sea 3                                → isSea3 == true
-        --   → Fake Moon, Full Moon Coming, 7/8, Normal    → KHÔNG GỬI
+        --   1. Moon thật (Real Full Moon > 7min, Blue Moon, Next Night 7/8) → moonData.real == true
+        --   2. Đang ở Sea 3                                                 → isSea3 == true
+        --   → Fake Moon, Full Moon Coming, Full Moon Ending ≤7min, Normal  → KHÔNG GỬI
         if moonData.real and isSea3 then
             print("📤 GỬI Discord + Firebase! (" .. moonData.type .. " tại Sea 3)")
             SendToDiscord(moonData)
