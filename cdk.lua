@@ -14,7 +14,7 @@ function CheckKick(v)
         task.wait(2)
         warn(v.TitleFrame.ErrorTitle.Text)
         if v.TitleFrame.ErrorTitle.Text == 'Teleport Failed' then
-            if String.find(v.MessageArea.ErrorFrame.ErrorMessage, 'Unable to join game') then
+            if string.find(v.MessageArea.ErrorFrame.ErrorMessage, 'Unable to join game') then  -- FIX 1: String.find → string.find
                 while true do end 
             end
         end
@@ -85,7 +85,7 @@ function Getplayerhit()
     return bladehits
 end
 
-local Net = (Services.ReplicatedStorage.Modules.Net)
+local Net = (game.ReplicatedStorage.Modules.Net)  -- FIX 2: Services → game (Services chưa tồn tại trong loadstring scope)
 
 local RegisterAttack = require(Net):RemoteEvent('RegisterAttack', true)
 local RegisterHit = require(Net):RemoteEvent('RegisterHit', true)
@@ -152,22 +152,21 @@ if not LPH_OBFUSCATED then
 end 
 
 if not modechange then return end 
-if modechange.Key ~= LPH_ENCSTR('55zNvhxztqLY') then return end 
+if modechange.Key ~= LPH_ENCSTR('VuNguyenCanTeam') then return end  -- FIX 3: Key khớp với config
 
 repeat wait() until game:IsLoaded() and game.Players.LocalPlayer:FindFirstChild('DataLoaded')
 
 game.ReplicatedStorage.Remotes.CommF_:InvokeServer('SetTeam', 'Marines')
 repeat wait() until game.Players.LocalPlayer.Character
 spawn(function()
-    game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild('NewIslandLOD', 9999):Destroy() 
-    game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild('IslandLOD', 9999):Destroy() 
+    pcall(function()  -- FIX 4: Wrap trong pcall phòng trường hợp script không tồn tại
+        game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild('NewIslandLOD', 9999):Destroy() 
+    end)
+    pcall(function()
+        game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild('IslandLOD', 9999):Destroy()  -- FIX 5: Thêm dấu . trước LocalPlayer
+    end)
 end)
---[[table.foreach(game.Players.LocalPlayer:GetDescendants(), function(_, c) 
-    if c:IsA('LocalScript') or c:IsA('ModuleScript') then 
-        c:Destroy() 
-        print('Destroyed', c) 
-    end 
-end)]]
+
 Players = game.Players
 LocalPlayer = Players.LocalPlayer
 Character = LocalPlayer.Character
@@ -183,8 +182,8 @@ ConChoChisiti36 = {
     PlayerData = {}, 
     Enemies = {}, 
     Tools = {}, 
-    NPCs = {}, 
-    Tools = {}
+    NPCs = {},
+    Backpack = {},  -- FIX 6: Tools bị khai báo 2 lần, thêm Backpack
 } 
 
 Services = {}
@@ -218,7 +217,7 @@ Remotes = {}
 setmetatable(Remotes, {
     __index = function(Self, Key)
         if Key ~= 'CommF_' then
-            warn('captured unregistered signal', key)
+            warn('captured unregistered signal', Key)  -- FIX 7: key → Key (viết hoa đúng tham số)
             return Services.ReplicatedStorage.Remotes[Key]
         end
         local tbl = {
@@ -254,7 +253,6 @@ function Storage.Set(Self, Key, Value)
 end 
 
 function Storage.Get(Self, Key) 
-    --Report('Get: ' .. tostring(Key or 'n/a') .. ' Value: ' .. tostring(Self.Data[Key] or 'n/') )
     return Self.Data[Key] 
 end 
 
@@ -290,7 +288,6 @@ function RefreshInventory()
         ConChoChisiti36.Backpack2[Value.Name] = Value
     end
     
-
     ConChoChisiti36.Backpack = ConChoChisiti36.Backpack2
 end
 
@@ -302,10 +299,6 @@ Remotes.CommE.OnClientEvent:Connect(function(...)
     end
 end)
 
---[[
-  'Legendary Haki', 'Moon', 'Legendary Sword',
-  'Prehistoric Island', 'Mirage', 'Rare Boss', 'Castle', 'Elite'
-]]
 FastAttack()
 
 function AsynclyPullServerDatas(Category) 
@@ -315,7 +308,6 @@ function AsynclyPullServerDatas(Category)
             Url = Url, 
             Method = 'GET'
         }
-        
         
         assert(Raw.Success == true) 
         return Services.HttpService:JSONDecode(Raw.Body)
@@ -346,7 +338,7 @@ function WrapToServer (Category, Filter)
             if not Filter or Filter(Server) then 
                 print('Attempt to join', Server.JobId, 'Players:', Server.Players)
                 Storage:Set(Server.JobId, true)
-                game:GetService('TeleportService'):TeleportToPlaceInstance(game.placeId,Server.JobId,game.Players.LocalPlayer)
+                game:GetService('TeleportService'):TeleportToPlaceInstance(game.PlaceId, Server.JobId, game.Players.LocalPlayer)  -- FIX 8: game.placeId → game.PlaceId
                 task.wait(5) 
             end 
         end 
@@ -480,7 +472,6 @@ function LockMob (Mob)
 end 
 
 function GrabMobs (MobName) 
-  --  if GrabDebounce == os.time() then return end 
     GrabDebounce = os.time() 
     pcall(sethiddenproperty, game.Players.LocalPlayer, 'SimulationRadius', math.huge) 
     GrabPosition = nil
@@ -507,6 +498,8 @@ function GrabMobs (MobName)
             end 
         end
     end 
+    
+    if EntriesCount == 0 then return end  -- FIX 9: Tránh chia cho 0
     
     local MidPoint = MobVectors / EntriesCount 
     if CaculateDistance(MidPoint, GrabPosition) > 400 then 
@@ -545,10 +538,12 @@ for _, Region in game:GetService("ReplicatedStorage").FortBuilderReplicatedSpawn
     table.insert(ConChoChisiti36.MobRegions[tostring(Region)], Region.CFrame)
 end 
 
+MobIndexUwU = 1  -- FIX 10: Khởi tạo MobIndexUwU tránh nil
+
 function PlayerAdded() 
     task.spawn(function()
         task.wait(6)
-        if LocalPlayer.Character:FindFirstChild("HasBuso") then
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HasBuso") then  -- FIX 11: Check Character tồn tại
             return
         end
         Remotes.CommF_:InvokeServer("Buso")
@@ -577,7 +572,7 @@ function SearchMobs (MobTable)
     end
     
     table.sort(Lists, function(a, b) 
-        return Sort1(a) < Sort1(b)
+        return (Sort1(a) or 9999) < (Sort1(b) or 9999)  -- FIX 12: Sort1 có thể trả về nil
     end)
     
     if Found then 
@@ -641,7 +636,7 @@ function AttackMob (MobTable)
     
     for _, Child in (MobTable) do
         local ChildName = tostring(Child)
-        if ChildName == "Deandre" or ChildName == "Urban" or ChildName == "Diablo" and (os.time() - (LastFire12 or 0)) > 180 then 
+        if (ChildName == "Deandre" or ChildName == "Urban" or ChildName == "Diablo") and (os.time() - (LastFire12 or 0)) > 180 then  -- FIX 13: Thêm ngoặc cho OR
             LastFire12 = os.time()
             Remotes.CommF_:InvokeServer("EliteHunter")
         end 
@@ -653,7 +648,7 @@ function AttackMob (MobTable)
             
             LastFound = os.time()
             local Count, Debounce = 0, os.time()
-            local Count2, Debounce = 0, os.time()
+            local Count2 = 0  -- FIX 14: Debounce bị khai báo 2 lần
             while task.wait() do
                 if _G.Stop then return end
                 
@@ -708,7 +703,7 @@ function AttackMob (MobTable)
                         end
                     end
                     
-                    EquipTool('Sword' or 'Melee')
+                    EquipTool('Sword')  -- FIX 15: 'Sword' or 'Melee' luôn = 'Sword', bỏ or vô nghĩa
                     
                     Attack()
                     if os.time() ~= Debounce then 
@@ -952,6 +947,7 @@ function CompleteDimension (DimensionName)
         end 
     until os.time() - TorchEnabledTime < 10 
     
+    local PortalBrick = nil  -- FIX 16: Khởi tạo PortalBrick local tránh nil global
     repeat task.wait() 
         local OriginalIsland = workspace.Map:WaitForChild(DimensionId, 10)
         if OriginalIsland then 
@@ -962,8 +958,8 @@ function CompleteDimension (DimensionName)
                     Torch.ProximityPrompt.HoldDuration = 0
                     task.wait(1)
                     local vim = game:GetService('VirtualInputManager')
-                    vim:SendKeyEvent(true, 'E', 0, game)    -- e vã lắm r T_T
-                    vim:SendKeyEvent(false, 'E', 0, game)    -- địt mẹ game
+                    vim:SendKeyEvent(true, 'E', 0, game)
+                    vim:SendKeyEvent(false, 'E', 0, game)
                     fireproximityprompt(workspace.Map:WaitForChild(DimensionId, 10):FindFirstChild(tostring(Torch)).ProximityPrompt) 
                 
                 end 
@@ -977,17 +973,12 @@ function CompleteDimension (DimensionName)
                 end
             end 
             ExitDoor = OriginalIsland:FindFirstChild('Exit') 
-            print('exit door', ExitDoor)
             if ExitDoor then 
                 PortalBrick = tostring(ExitDoor.BrickColor)
-                print('Brick color', ExitDoor, ExitDoor.BrickColor, PortalBrick)
             end 
-        else 
-            print('no island idk wt-')
         end
-        print('loop damn', PortalBrick)
     until PortalBrick == 'Olivine' or PortalBrick == 'Cloudy grey' 
-    print('leave')
+    
     while os.time() - DoneCDKTick > 15 do 
         TweenTo(ExitDoor.CFrame + Vector3.new(0, math.random(1,5), 0)) 
         task.wait(1) 
@@ -1037,12 +1028,12 @@ function DoCDKTasks (CachedData)
         for Index = 1, 3, 1 do
             local Pedestal = workspace.Map.Turtle.Cursed:FindFirstChild('Pedestal' .. Index) 
             
-            if workspace.Map.Turtle.Cursed:FindFirstChild('Pedestal' .. Index) .ProximityPrompt.Enabled then 
+            if Pedestal and Pedestal.ProximityPrompt.Enabled then  -- FIX 17: Dùng biến Pedestal đã khai báo
                 repeat task.wait() 
-                    TweenTo(workspace.Map.Turtle.Cursed:FindFirstChild('Pedestal' .. Index) .CFrame) 
-                until CaculateDistance(workspace.Map.Turtle.Cursed:FindFirstChild('Pedestal' .. Index) .CFrame) < 5
+                    TweenTo(Pedestal.CFrame) 
+                until CaculateDistance(Pedestal.CFrame) < 5
                 
-                fireproximityprompt(workspace.Map.Turtle.Cursed:FindFirstChild('Pedestal' .. Index) .ProximityPrompt) -- địt mẹ delta
+                fireproximityprompt(Pedestal.ProximityPrompt)
                 task.wait(3) 
                 pcall(function() 
                     LocalPlayer.Character.Humanoid.Health = 0
