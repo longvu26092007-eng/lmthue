@@ -1,59 +1,45 @@
 --[[
     ╔══════════════════════════════════════════════╗
-    ║       SERVER AGE CHECKER                      ║
-    ║  Hiện thời gian server đã được tạo ra         ║
+    ║       SERVER AGE CHECKER v2                   ║
+    ║  Hiện tuổi server + thời gian bạn join        ║
     ╚══════════════════════════════════════════════╝
 ]]
 
--- Đợi game load
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait(1) until game.Players.LocalPlayer
 repeat task.wait(1) until game.Players.LocalPlayer.Character
-task.wait(3)
+task.wait(5) -- Đợi DistributedGameTime sync chính xác
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- ====================== TÍNH TOÁN ======================
-local function GetServerInfo()
-    local uptime = workspace.DistributedGameTime  -- giây server đã chạy
-    local createdTimestamp = os.time() - math.floor(uptime)  -- thời điểm tạo server
+-- ====================== GHI NHẬN LÚC JOIN ======================
+-- Lấy ngay lúc script chạy để tính
+local JoinRealTime = os.time()                              -- Thời gian thực lúc bạn join
+local ServerUptimeAtJoin = math.floor(workspace.DistributedGameTime)  -- Server đã chạy bao lâu TRƯỚC khi bạn join
+local ServerCreatedTimestamp = JoinRealTime - ServerUptimeAtJoin      -- Thời điểm server được TẠO
 
-    -- Tách uptime ra ngày / giờ / phút / giây
-    local days = math.floor(uptime / 86400)
-    local hours = math.floor((uptime % 86400) / 3600)
-    local minutes = math.floor((uptime % 3600) / 60)
-    local seconds = math.floor(uptime % 60)
+print("[ServerAge] DistributedGameTime lúc join:", ServerUptimeAtJoin, "giây")
+print("[ServerAge] Server tạo lúc timestamp:", ServerCreatedTimestamp)
+print("[ServerAge] Server tạo lúc:", os.date("%d/%m/%Y %H:%M:%S", ServerCreatedTimestamp))
 
-    -- Format uptime đẹp
-    local uptimeStr = ""
-    if days > 0 then uptimeStr = uptimeStr .. days .. " ngày " end
-    if hours > 0 then uptimeStr = uptimeStr .. hours .. " giờ " end
-    if minutes > 0 then uptimeStr = uptimeStr .. minutes .. " phút " end
-    uptimeStr = uptimeStr .. seconds .. " giây"
-
-    -- Thời điểm tạo server (giờ local)
-    local createdStr = os.date("%d/%m/%Y %H:%M:%S", createdTimestamp)
-
-    -- Server ID
-    local jobId = game.JobId
-    local shortJobId = string.sub(jobId, 1, 20) .. "..."
-
-    -- Số player
-    local playerCount = #Players:GetPlayers() .. "/" .. Players.MaxPlayers
-
-    return {
-        uptime = uptime,
-        uptimeStr = uptimeStr,
-        createdStr = createdStr,
-        createdTimestamp = createdTimestamp,
-        jobId = shortJobId,
-        playerCount = playerCount,
-        days = days,
-        hours = hours,
-        minutes = minutes,
-        seconds = seconds,
-    }
+-- ====================== FORMAT FUNCTIONS ======================
+local function FormatDuration(totalSeconds)
+    totalSeconds = math.floor(totalSeconds)
+    if totalSeconds < 0 then totalSeconds = 0 end
+    
+    local days = math.floor(totalSeconds / 86400)
+    local hours = math.floor((totalSeconds % 86400) / 3600)
+    local minutes = math.floor((totalSeconds % 3600) / 60)
+    local seconds = totalSeconds % 60
+    
+    local parts = {}
+    if days > 0 then table.insert(parts, days .. " ngày") end
+    if hours > 0 then table.insert(parts, hours .. " giờ") end
+    if minutes > 0 then table.insert(parts, minutes .. " phút") end
+    if seconds > 0 or #parts == 0 then table.insert(parts, seconds .. " giây") end
+    
+    return table.concat(parts, " "), days, hours, minutes, seconds
 end
 
 -- ====================== UI ======================
@@ -69,12 +55,11 @@ SG.ResetOnSpawn = false
 SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 SG.Parent = UIParent
 
--- Main Frame
 local MF = Instance.new("Frame")
 MF.Name = "Main"
-MF.Size = UDim2.new(0, 280, 0, 165)
-MF.Position = UDim2.new(0, 20, 1, -185)
-MF.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+MF.Size = UDim2.new(0, 320, 0, 210)
+MF.Position = UDim2.new(0, 20, 1, -230)
+MF.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 MF.BorderSizePixel = 0
 MF.Parent = SG
 MF.Active = true
@@ -95,36 +80,53 @@ TBF.Size = UDim2.new(1, 0, 0, 10)
 TBF.Position = UDim2.new(0, 0, 1, -10)
 TBF.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
 TBF.BorderSizePixel = 0
-
 local TL = Instance.new("TextLabel", TB)
 TL.Size = UDim2.new(1, -10, 1, 0)
 TL.Position = UDim2.new(0, 10, 0, 0)
 TL.BackgroundTransparency = 1
-TL.Text = "🖥️ SERVER AGE"
+TL.Text = "🖥️ SERVER AGE CHECKER"
 TL.TextColor3 = Color3.new(1, 1, 1)
 TL.TextSize = 13
 TL.Font = Enum.Font.GothamBold
 TL.TextXAlignment = Enum.TextXAlignment.Left
 
--- Content Frame
+-- Minimize button
+local MinBtn = Instance.new("TextButton", TB)
+MinBtn.Size = UDim2.new(0, 24, 0, 24)
+MinBtn.Position = UDim2.new(1, -28, 0, 2)
+MinBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+MinBtn.Text = "−"
+MinBtn.TextColor3 = Color3.new(1, 1, 1)
+MinBtn.TextSize = 16
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.BorderSizePixel = 0
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 6)
+
 local CF = Instance.new("Frame", MF)
 CF.Name = "Content"
 CF.Size = UDim2.new(1, -12, 1, -34)
 CF.Position = UDim2.new(0, 6, 0, 32)
 CF.BackgroundTransparency = 1
 
+local _min = false
+MinBtn.MouseButton1Click:Connect(function()
+    _min = not _min
+    CF.Visible = not _min
+    MF.Size = _min and UDim2.new(0, 320, 0, 28) or UDim2.new(0, 320, 0, 210)
+    MinBtn.Text = _min and "+" or "−"
+end)
+
 -- Labels
 local _labels = {}
 local _lY = 0
-
-local function MakeLabel(id, text)
+local function ML(id, text, color)
     local l = Instance.new("TextLabel", CF)
     l.Name = id
     l.Size = UDim2.new(1, 0, 0, 18)
     l.Position = UDim2.new(0, 0, 0, _lY)
     l.BackgroundTransparency = 1
     l.Text = text or ""
-    l.TextColor3 = Color3.fromRGB(220, 220, 240)
+    l.TextColor3 = color or Color3.fromRGB(220, 220, 240)
     l.TextSize = 12
     l.Font = Enum.Font.GothamSemibold
     l.TextXAlignment = Enum.TextXAlignment.Left
@@ -132,70 +134,84 @@ local function MakeLabel(id, text)
     _labels[id] = l
     return l
 end
-
-local function UpdateLabel(id, text)
-    if _labels[id] then _labels[id].Text = text end
+local function MS()
+    local s = Instance.new("Frame", CF)
+    s.Size = UDim2.new(1, 0, 0, 1)
+    s.Position = UDim2.new(0, 0, 0, _lY)
+    s.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    s.BorderSizePixel = 0
+    _lY = _lY + 4
 end
+local function UL(id, text) if _labels[id] then _labels[id].Text = text end end
+local function SLC(id, c) if _labels[id] then _labels[id].TextColor3 = c end end
 
-local function SetColor(id, color)
-    if _labels[id] then _labels[id].TextColor3 = color end
-end
-
-MakeLabel("uptime",  "⏱️ Uptime: ...")
-MakeLabel("created", "📅 Tạo lúc: ...")
-MakeLabel("age",     "📊 Tuổi: ...")
-MakeLabel("players", "👥 Players: ...")
-MakeLabel("server",  "🖥️ Server: ...")
+ML("h1", "═══ SERVER ═══", Color3.fromRGB(0, 170, 255)); MS()
+ML("created",  "📅 Server tạo lúc: ...")
+ML("age",      "⏱️ Tuổi server: ...")
+ML("uptime",   "🔄 Đang chạy: ...")
+MS()
+ML("h2", "═══ BẠN ═══", Color3.fromRGB(0, 170, 255)); MS()
+ML("joined",   "🚪 Bạn join lúc: ...")
+ML("session",  "🕐 Phiên của bạn: ...")
+MS()
+ML("players",  "👥 Players: ...")
+ML("server",   "🖥️ JobId: " .. string.sub(game.JobId, 1, 24) .. "...")
 
 -- ====================== UPDATE LOOP ======================
 task.spawn(function()
     while true do
-        local info = GetServerInfo()
-
-        -- Uptime
-        UpdateLabel("uptime", "⏱️ Uptime: " .. info.uptimeStr)
-
-        -- Thời điểm tạo
-        UpdateLabel("created", "📅 Tạo lúc: " .. info.createdStr)
-
-        -- Tuổi server (màu theo độ cũ)
-        local ageText = ""
-        if info.days > 0 then
-            ageText = info.days .. " ngày " .. info.hours .. " giờ trước"
-        elseif info.hours > 0 then
-            ageText = info.hours .. " giờ " .. info.minutes .. " phút trước"
+        -- 1. TUỔI SERVER (tính từ lúc server được tạo ra lần đầu)
+        local currentUptime = math.floor(workspace.DistributedGameTime)
+        local serverCreated = os.time() - currentUptime
+        
+        -- Thời điểm server tạo
+        UL("created", "📅 Server tạo lúc: " .. os.date("%d/%m/%Y %H:%M:%S", serverCreated))
+        
+        -- Tuổi server (bao lâu từ lúc tạo đến giờ)
+        local ageStr, days, hours, mins, secs = FormatDuration(currentUptime)
+        UL("age", "⏱️ Tuổi server: " .. ageStr)
+        
+        -- Màu theo tuổi
+        if days >= 1 then
+            SLC("age", Color3.fromRGB(255, 50, 50))        -- 🔴 > 1 ngày
+            SLC("created", Color3.fromRGB(255, 50, 50))
+        elseif hours >= 12 then
+            SLC("age", Color3.fromRGB(255, 120, 0))        -- 🟠 > 12 giờ
+            SLC("created", Color3.fromRGB(255, 120, 0))
+        elseif hours >= 6 then
+            SLC("age", Color3.fromRGB(255, 200, 50))       -- 🟡 > 6 giờ
+            SLC("created", Color3.fromRGB(255, 200, 50))
+        elseif hours >= 1 then
+            SLC("age", Color3.fromRGB(180, 255, 80))       -- 🟢 1-6 giờ
+            SLC("created", Color3.fromRGB(180, 255, 80))
         else
-            ageText = info.minutes .. " phút " .. info.seconds .. " giây trước"
+            SLC("age", Color3.fromRGB(80, 255, 80))        -- 🟢 < 1 giờ (mới)
+            SLC("created", Color3.fromRGB(80, 255, 80))
         end
-        UpdateLabel("age", "📊 Tuổi: " .. ageText)
-
-        -- Đổi màu theo tuổi
-        if info.days >= 1 then
-            SetColor("age", Color3.fromRGB(255, 80, 80))       -- Đỏ: > 1 ngày (server cũ)
-        elseif info.hours >= 6 then
-            SetColor("age", Color3.fromRGB(255, 170, 0))       -- Cam: 6+ giờ
-        elseif info.hours >= 1 then
-            SetColor("age", Color3.fromRGB(255, 255, 80))      -- Vàng: 1-6 giờ
-        else
-            SetColor("age", Color3.fromRGB(80, 255, 80))       -- Xanh: < 1 giờ (server mới)
-        end
-
-        -- Players
-        UpdateLabel("players", "👥 Players: " .. info.playerCount)
-
-        -- Server ID
-        UpdateLabel("server", "🖥️ Server: " .. info.jobId)
-
-        task.wait(1)  -- Cập nhật mỗi giây
+        
+        -- Uptime realtime (đếm lên mỗi giây)
+        UL("uptime", "🔄 Đang chạy: " .. FormatDuration(currentUptime))
+        
+        -- 2. PHIÊN CỦA BẠN (từ lúc bạn join đến giờ)
+        local sessionTime = os.time() - JoinRealTime
+        UL("joined", "🚪 Bạn join lúc: " .. os.date("%d/%m/%Y %H:%M:%S", JoinRealTime))
+        UL("session", "🕐 Phiên của bạn: " .. FormatDuration(sessionTime))
+        
+        -- 3. PLAYERS
+        UL("players", "👥 Players: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers)
+        
+        task.wait(1)
     end
 end)
 
--- Print ra console
-local info = GetServerInfo()
+-- ====================== CONSOLE LOG ======================
+local ageStr = FormatDuration(ServerUptimeAtJoin)
 print("═══════════════════════════════════════════")
-print("[ServerAge] 🖥️ SERVER INFO")
-print("[ServerAge] ⏱️ Uptime: " .. info.uptimeStr)
-print("[ServerAge] 📅 Tạo lúc: " .. info.createdStr)
-print("[ServerAge] 👥 Players: " .. info.playerCount)
-print("[ServerAge] 🖥️ JobId: " .. game.JobId)
+print("[ServerAge] 🖥️ SERVER AGE CHECKER v2")
+print("───────────────────────────────────────────")
+print("[ServerAge] 📅 Server tạo lúc : " .. os.date("%d/%m/%Y %H:%M:%S", ServerCreatedTimestamp))
+print("[ServerAge] ⏱️ Tuổi server    : " .. ageStr)
+print("[ServerAge] 🚪 Bạn join lúc   : " .. os.date("%d/%m/%Y %H:%M:%S", JoinRealTime))
+print("[ServerAge] 👥 Players        : " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers)
+print("[ServerAge] 🖥️ JobId          : " .. game.JobId)
 print("═══════════════════════════════════════════")
