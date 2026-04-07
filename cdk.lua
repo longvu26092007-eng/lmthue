@@ -160,7 +160,7 @@ game.ReplicatedStorage.Remotes.CommF_:InvokeServer('SetTeam', 'Marines')
 repeat wait() until game.Players.LocalPlayer.Character
 spawn(function()
     game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild('NewIslandLOD', 9999):Destroy() 
-    game:GetService("Players")LocalPlayer.PlayerScripts:WaitForChild('IslandLOD', 9999):Destroy() 
+    game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild('IslandLOD', 9999):Destroy() 
 end)
 --[[table.foreach(game.Players.LocalPlayer:GetDescendants(), function(_, c) 
     if c:IsA('LocalScript') or c:IsA('ModuleScript') then 
