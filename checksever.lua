@@ -1,33 +1,71 @@
 --[[
     ╔══════════════════════════════════════════════╗
-    ║       SERVER AGE CHECKER v2                   ║
-    ║  Hiện tuổi server + thời gian bạn join        ║
+    ║       SERVER AGE CHECKER v3                   ║
+    ║  Dùng GetServerTimeNow() từ source BF         ║
     ╚══════════════════════════════════════════════╝
+    
+    Từ source Blox Fruits tìm được 2 cách lấy thời gian server:
+    1. workspace:GetServerTimeNow()  → timestamp server-synced (chính xác nhất)
+    2. workspace.DistributedGameTime → số giây server đã chạy
+    3. os.time() - tick()            → offset giữa real time và local tick
+    
+    Kết hợp cả 3 để tính chính xác nhất.
 ]]
 
 if not game:IsLoaded() then game.Loaded:Wait() end
 repeat task.wait(1) until game.Players.LocalPlayer
 repeat task.wait(1) until game.Players.LocalPlayer.Character
-task.wait(5) -- Đợi DistributedGameTime sync chính xác
+task.wait(5)
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
--- ====================== GHI NHẬN LÚC JOIN ======================
--- Lấy ngay lúc script chạy để tính
-local JoinRealTime = os.time()                              -- Thời gian thực lúc bạn join
-local ServerUptimeAtJoin = math.floor(workspace.DistributedGameTime)  -- Server đã chạy bao lâu TRƯỚC khi bạn join
-local ServerCreatedTimestamp = JoinRealTime - ServerUptimeAtJoin      -- Thời điểm server được TẠO
+-- ====================== TÍNH TUỔI SERVER ======================
+-- Cách 1: GetServerTimeNow (từ source BF, chính xác nhất, server-synced)
+local ServerTimeNow = nil
+pcall(function()
+    ServerTimeNow = workspace:GetServerTimeNow()
+end)
 
-print("[ServerAge] DistributedGameTime lúc join:", ServerUptimeAtJoin, "giây")
-print("[ServerAge] Server tạo lúc timestamp:", ServerCreatedTimestamp)
-print("[ServerAge] Server tạo lúc:", os.date("%d/%m/%Y %H:%M:%S", ServerCreatedTimestamp))
+-- Cách 2: DistributedGameTime (Roblox built-in, số giây server đã chạy)  
+local ServerUptime = workspace.DistributedGameTime
 
--- ====================== FORMAT FUNCTIONS ======================
+-- Cách 3: os.time() - tick() offset (từ source BF: GetWaterHeightAtLocation)
+local TimeOffset = os.time() - tick()
+
+-- Tính thời điểm server được tạo
+local ServerCreatedTimestamp
+if ServerTimeNow and ServerTimeNow > 0 then
+    -- Dùng GetServerTimeNow - DistributedGameTime = thời điểm tạo (chính xác nhất)
+    ServerCreatedTimestamp = math.floor(ServerTimeNow - ServerUptime)
+else
+    -- Fallback: os.time() - uptime
+    ServerCreatedTimestamp = math.floor(os.time() - ServerUptime)
+end
+
+-- Thời điểm bạn join
+local JoinTimestamp = os.time()
+local UptimeAtJoin = math.floor(ServerUptime)
+
+-- ====================== FORMAT ======================
 local function FormatDuration(totalSeconds)
-    totalSeconds = math.floor(totalSeconds)
-    if totalSeconds < 0 then totalSeconds = 0 end
+    totalSeconds = math.max(0, math.floor(totalSeconds))
+    local days = math.floor(totalSeconds / 86400)
+    local hours = math.floor((totalSeconds % 86400) / 3600)
+    local minutes = math.floor((totalSeconds % 3600) / 60)
+    local seconds = totalSeconds % 60
     
+    local parts = {}
+    if days > 0 then table.insert(parts, days .. "d") end
+    if hours > 0 then table.insert(parts, hours .. "h") end
+    if minutes > 0 then table.insert(parts, minutes .. "m") end
+    table.insert(parts, seconds .. "s")
+    
+    return table.concat(parts, " ")
+end
+
+local function FormatDurationVN(totalSeconds)
+    totalSeconds = math.max(0, math.floor(totalSeconds))
     local days = math.floor(totalSeconds / 86400)
     local hours = math.floor((totalSeconds % 86400) / 3600)
     local minutes = math.floor((totalSeconds % 3600) / 60)
@@ -57,8 +95,8 @@ SG.Parent = UIParent
 
 local MF = Instance.new("Frame")
 MF.Name = "Main"
-MF.Size = UDim2.new(0, 320, 0, 210)
-MF.Position = UDim2.new(0, 20, 1, -230)
+MF.Size = UDim2.new(0, 310, 0, 230)
+MF.Position = UDim2.new(0, 20, 1, -250)
 MF.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 MF.BorderSizePixel = 0
 MF.Parent = SG
@@ -69,7 +107,7 @@ local stk = Instance.new("UIStroke", MF)
 stk.Color = Color3.fromRGB(0, 170, 255)
 stk.Thickness = 2
 
--- Title Bar
+-- Title
 local TB = Instance.new("Frame", MF)
 TB.Size = UDim2.new(1, 0, 0, 28)
 TB.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
@@ -81,16 +119,16 @@ TBF.Position = UDim2.new(0, 0, 1, -10)
 TBF.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
 TBF.BorderSizePixel = 0
 local TL = Instance.new("TextLabel", TB)
-TL.Size = UDim2.new(1, -10, 1, 0)
+TL.Size = UDim2.new(1, -40, 1, 0)
 TL.Position = UDim2.new(0, 10, 0, 0)
 TL.BackgroundTransparency = 1
-TL.Text = "🖥️ SERVER AGE CHECKER"
+TL.Text = "🖥️ SERVER AGE v3"
 TL.TextColor3 = Color3.new(1, 1, 1)
 TL.TextSize = 13
 TL.Font = Enum.Font.GothamBold
 TL.TextXAlignment = Enum.TextXAlignment.Left
 
--- Minimize button
+-- Minimize
 local MinBtn = Instance.new("TextButton", TB)
 MinBtn.Size = UDim2.new(0, 24, 0, 24)
 MinBtn.Position = UDim2.new(1, -28, 0, 2)
@@ -112,7 +150,7 @@ local _min = false
 MinBtn.MouseButton1Click:Connect(function()
     _min = not _min
     CF.Visible = not _min
-    MF.Size = _min and UDim2.new(0, 320, 0, 28) or UDim2.new(0, 320, 0, 210)
+    MF.Size = _min and UDim2.new(0, 310, 0, 28) or UDim2.new(0, 310, 0, 230)
     MinBtn.Text = _min and "+" or "−"
 end)
 
@@ -132,7 +170,6 @@ local function ML(id, text, color)
     l.TextXAlignment = Enum.TextXAlignment.Left
     _lY = _lY + 20
     _labels[id] = l
-    return l
 end
 local function MS()
     local s = Instance.new("Frame", CF)
@@ -146,72 +183,87 @@ local function UL(id, text) if _labels[id] then _labels[id].Text = text end end
 local function SLC(id, c) if _labels[id] then _labels[id].TextColor3 = c end end
 
 ML("h1", "═══ SERVER ═══", Color3.fromRGB(0, 170, 255)); MS()
-ML("created",  "📅 Server tạo lúc: ...")
-ML("age",      "⏱️ Tuổi server: ...")
-ML("uptime",   "🔄 Đang chạy: ...")
+ML("created", "📅 Tạo lúc: ...")
+ML("age",     "⏱️ Tuổi: ...")
+ML("live",    "🔴 LIVE: ...")
 MS()
 ML("h2", "═══ BẠN ═══", Color3.fromRGB(0, 170, 255)); MS()
-ML("joined",   "🚪 Bạn join lúc: ...")
-ML("session",  "🕐 Phiên của bạn: ...")
+ML("joined",  "🚪 Join lúc: ...")
+ML("session", "🕐 Phiên: ...")
 MS()
-ML("players",  "👥 Players: ...")
-ML("server",   "🖥️ JobId: " .. string.sub(game.JobId, 1, 24) .. "...")
+ML("players", "👥 Players: ...")
+ML("jobid",   "🖥️ JobId: ...")
 
--- ====================== UPDATE LOOP ======================
+-- ====================== MAIN LOOP ======================
 task.spawn(function()
     while true do
-        -- 1. TUỔI SERVER (tính từ lúc server được tạo ra lần đầu)
-        local currentUptime = math.floor(workspace.DistributedGameTime)
-        local serverCreated = os.time() - currentUptime
+        -- === SERVER ===
+        -- Lấy uptime realtime (cập nhật mỗi giây)
+        local currentUptime = workspace.DistributedGameTime
+        
+        -- Tính lại server created dùng GetServerTimeNow (chính xác hơn os.time)
+        local serverCreated = ServerCreatedTimestamp
+        pcall(function()
+            local stn = workspace:GetServerTimeNow()
+            if stn and stn > 0 then
+                serverCreated = math.floor(stn - currentUptime)
+            end
+        end)
         
         -- Thời điểm server tạo
-        UL("created", "📅 Server tạo lúc: " .. os.date("%d/%m/%Y %H:%M:%S", serverCreated))
+        UL("created", "📅 Tạo lúc: " .. os.date("%d/%m/%Y  %H:%M:%S", serverCreated))
         
-        -- Tuổi server (bao lâu từ lúc tạo đến giờ)
-        local ageStr, days, hours, mins, secs = FormatDuration(currentUptime)
-        UL("age", "⏱️ Tuổi server: " .. ageStr)
+        -- Tuổi server
+        local ageStr, days, hours = FormatDurationVN(currentUptime)
+        UL("age", "⏱️ Tuổi: " .. ageStr)
+        
+        -- LIVE counter (compact)
+        UL("live", "🔴 LIVE: " .. FormatDuration(currentUptime))
+        SLC("live", Color3.fromRGB(255, 80, 80))
         
         -- Màu theo tuổi
         if days >= 1 then
-            SLC("age", Color3.fromRGB(255, 50, 50))        -- 🔴 > 1 ngày
+            SLC("age", Color3.fromRGB(255, 50, 50))
             SLC("created", Color3.fromRGB(255, 50, 50))
         elseif hours >= 12 then
-            SLC("age", Color3.fromRGB(255, 120, 0))        -- 🟠 > 12 giờ
+            SLC("age", Color3.fromRGB(255, 120, 0))
             SLC("created", Color3.fromRGB(255, 120, 0))
         elseif hours >= 6 then
-            SLC("age", Color3.fromRGB(255, 200, 50))       -- 🟡 > 6 giờ
+            SLC("age", Color3.fromRGB(255, 200, 50))
             SLC("created", Color3.fromRGB(255, 200, 50))
         elseif hours >= 1 then
-            SLC("age", Color3.fromRGB(180, 255, 80))       -- 🟢 1-6 giờ
+            SLC("age", Color3.fromRGB(180, 255, 80))
             SLC("created", Color3.fromRGB(180, 255, 80))
         else
-            SLC("age", Color3.fromRGB(80, 255, 80))        -- 🟢 < 1 giờ (mới)
+            SLC("age", Color3.fromRGB(80, 255, 80))
             SLC("created", Color3.fromRGB(80, 255, 80))
         end
         
-        -- Uptime realtime (đếm lên mỗi giây)
-        UL("uptime", "🔄 Đang chạy: " .. FormatDuration(currentUptime))
+        -- === BẠN ===
+        local sessionTime = os.time() - JoinTimestamp
+        UL("joined", "🚪 Join lúc: " .. os.date("%d/%m/%Y  %H:%M:%S", JoinTimestamp))
+        UL("session", "🕐 Phiên: " .. FormatDurationVN(sessionTime))
         
-        -- 2. PHIÊN CỦA BẠN (từ lúc bạn join đến giờ)
-        local sessionTime = os.time() - JoinRealTime
-        UL("joined", "🚪 Bạn join lúc: " .. os.date("%d/%m/%Y %H:%M:%S", JoinRealTime))
-        UL("session", "🕐 Phiên của bạn: " .. FormatDuration(sessionTime))
-        
-        -- 3. PLAYERS
+        -- === INFO ===
         UL("players", "👥 Players: " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers)
+        UL("jobid", "🖥️ JobId: " .. string.sub(game.JobId, 1, 24) .. "...")
         
         task.wait(1)
     end
 end)
 
--- ====================== CONSOLE LOG ======================
-local ageStr = FormatDuration(ServerUptimeAtJoin)
+-- ====================== CONSOLE ======================
 print("═══════════════════════════════════════════")
-print("[ServerAge] 🖥️ SERVER AGE CHECKER v2")
+print("[ServerAge v3] 🖥️ SERVER AGE CHECKER")
 print("───────────────────────────────────────────")
-print("[ServerAge] 📅 Server tạo lúc : " .. os.date("%d/%m/%Y %H:%M:%S", ServerCreatedTimestamp))
-print("[ServerAge] ⏱️ Tuổi server    : " .. ageStr)
-print("[ServerAge] 🚪 Bạn join lúc   : " .. os.date("%d/%m/%Y %H:%M:%S", JoinRealTime))
-print("[ServerAge] 👥 Players        : " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers)
-print("[ServerAge] 🖥️ JobId          : " .. game.JobId)
+print("[ServerAge] 📅 Server tạo lúc  : " .. os.date("%d/%m/%Y %H:%M:%S", ServerCreatedTimestamp))
+print("[ServerAge] ⏱️ Tuổi server     : " .. FormatDurationVN(UptimeAtJoin))
+print("[ServerAge] 🚪 Bạn join lúc    : " .. os.date("%d/%m/%Y %H:%M:%S", JoinTimestamp))
+print("[ServerAge] 👥 Players         : " .. #Players:GetPlayers() .. "/" .. Players.MaxPlayers)
+print("[ServerAge] 🖥️ JobId           : " .. game.JobId)
+if ServerTimeNow then
+    print("[ServerAge] 🔧 Method          : GetServerTimeNow() ✅")
+else
+    print("[ServerAge] 🔧 Method          : os.time() fallback ⚠️")
+end
 print("═══════════════════════════════════════════")
