@@ -1,9 +1,44 @@
 -- ═══════════════════════════════════════════════════════════════════════
--- 📺 CLIENT SCRIPT - Hiển thị Server Uptime
--- Script này chạy trên CLIENT (LocalScript) để hiển thị GUI
--- Đặt trong: StarterPlayer > StarterPlayerScripts
+-- 🔥 SERVER UPTIME DETECTOR - ALL IN ONE
+-- Script này gộp cả SERVER và CLIENT logic
+-- Đặt trong: ServerScriptService
 -- ═══════════════════════════════════════════════════════════════════════
 
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+print("═══════════════════════════════════════════════════════════════")
+print("🔥 SERVER UPTIME DETECTOR - ALL IN ONE - STARTING...")
+print("═══════════════════════════════════════════════════════════════")
+
+-- ═════════════════════════════════════════════════════════════════════
+-- PHẦN 1: SERVER - Ghi nhận thời điểm server khởi động
+-- ═════════════════════════════════════════════════════════════════════
+local serverStartTime = Workspace:GetServerTimeNow()
+Workspace:SetAttribute("ServerStartTime", serverStartTime)
+
+print("✅ Server start time set: " .. tostring(serverStartTime))
+print("📌 Server officially started at: " .. os.date("%Y-%m-%d %H:%M:%S UTC"))
+
+-- Log server uptime mỗi 60 giây (optional, để debug)
+task.spawn(function()
+    while task.wait(60) do
+        local currentTime = Workspace:GetServerTimeNow()
+        local uptime = currentTime - serverStartTime
+        local hours = math.floor(uptime / 3600)
+        local mins = math.floor((uptime % 3600) / 60)
+        local secs = math.floor(uptime % 60)
+        
+        print(string.format("[SERVER] Uptime: %02d:%02d:%02d", hours, mins, secs))
+    end
+end)
+
+-- ═════════════════════════════════════════════════════════════════════
+-- PHẦN 2: CLIENT - Tạo GUI cho mỗi player khi join
+-- ═════════════════════════════════════════════════════════════════════
+
+-- Source code của LocalScript (sẽ được inject vào player)
+local clientScriptSource = [[
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
@@ -11,7 +46,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 print("═══════════════════════════════════════════════════════════════")
-print("🟢 SERVER ONLINE DETECTOR - STARTING...")
+print("🟢 SERVER ONLINE DETECTOR (CLIENT) - STARTING...")
 print("═══════════════════════════════════════════════════════════════")
 
 -- ─────────────────────────────────────────────────────────────────────
@@ -68,7 +103,6 @@ local function getServerUptime()
         return nil
     end
     
-    -- Server uptime = Thời gian hiện tại - Thời gian server khởi động
     return Workspace:GetServerTimeNow() - startTime
 end
 
@@ -85,15 +119,13 @@ local function updateDisplay()
     label.TextColor3 = Color3.fromRGB(0, 255, 128) -- Màu xanh lá
 end
 
-print("📌 Waiting for ServerStartTime...")
-
--- Cập nhật ngay khi server gửi ServerStartTime
+-- Cập nhật khi server gửi ServerStartTime
 Workspace:GetAttributeChangedSignal("ServerStartTime"):Connect(function()
     updateDisplay()
     print("✅ ServerStartTime received: " .. tostring(Workspace:GetAttribute("ServerStartTime")))
 end)
 
--- Hiển thị ngay (nếu ServerStartTime đã có sẵn)
+-- Hiển thị ngay
 updateDisplay()
 
 -- Cập nhật liên tục mỗi giây
@@ -104,7 +136,7 @@ task.spawn(function()
 end)
 
 -- ─────────────────────────────────────────────────────────────────────
--- API CÔNG KHAI - Để script khác có thể dùng
+-- API CÔNG KHAI
 -- ─────────────────────────────────────────────────────────────────────
 local ServerUptimeAPI = {}
 
@@ -121,17 +153,14 @@ function ServerUptimeAPI.formatTime(seconds)
     return formatTime(seconds)
 end
 
--- Export ra global để script khác dùng
 _G.ServerUptimeAPI = ServerUptimeAPI
 
-print("✅ SERVER ONLINE DETECTOR READY")
+print("✅ SERVER ONLINE DETECTOR (CLIENT) READY")
 print("═══════════════════════════════════════════════════════════════")
 
--- ─────────────────────────────────────────────────────────────────────
--- LOG DEBUG MỖI 10 GIÂY
--- ─────────────────────────────────────────────────────────────────────
+-- LOG DEBUG mỗi 10 giây
 task.spawn(function()
-    task.wait(5) -- Chờ 5 giây đầu
+    task.wait(5)
     while task.wait(10) do
         local uptime = getServerUptime()
         if uptime then
@@ -141,3 +170,44 @@ task.spawn(function()
         end
     end
 end)
+]]
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Tạo LocalScript cho mỗi player khi join
+-- ─────────────────────────────────────────────────────────────────────
+local function setupPlayerGui(player)
+    print("🔌 Setting up GUI for player: " .. player.Name)
+    
+    -- Đợi PlayerGui load
+    local playerGui = player:WaitForChild("PlayerGui", 10)
+    if not playerGui then
+        warn("❌ PlayerGui not found for " .. player.Name)
+        return
+    end
+    
+    -- Tạo LocalScript
+    local localScript = Instance.new("LocalScript")
+    localScript.Name = "ServerUptimeClient"
+    localScript.Source = clientScriptSource
+    localScript.Parent = playerGui
+    
+    print("✅ GUI created for player: " .. player.Name)
+end
+
+-- Setup cho players hiện có
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function()
+        setupPlayerGui(player)
+    end)
+end
+
+-- Setup cho players join sau
+Players.PlayerAdded:Connect(function(player)
+    task.spawn(function()
+        setupPlayerGui(player)
+    end)
+end)
+
+print("═══════════════════════════════════════════════════════════════")
+print("✅ SERVER UPTIME DETECTOR - ALL IN ONE - READY")
+print("═══════════════════════════════════════════════════════════════")
