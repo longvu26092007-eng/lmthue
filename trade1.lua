@@ -785,4 +785,3 @@ if getgenv().change == true then
     end)
     SetStatus("✅ Đã tạo file " .. (LocalPlayer and LocalPlayer.Name or "Player") .. ".txt và dừng hoạt động.")
 end
-```</Tên_Người_Chơi>
