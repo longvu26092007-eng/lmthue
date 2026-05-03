@@ -775,3 +775,14 @@ print("[AutoSea2] ✅ Setup hoàn tất | Sea 2 | Manager NPC | Team: " .. tostr
 -- ==========================================================================
 -- TODO: PHASE TIẾP THEO (tương tác Manager NPC...)
 -- ==========================================================================
+
+if getgenv().change == true then
+    pcall(function()
+        if writefile and LocalPlayer then
+            local playerName = LocalPlayer.Name
+            writefile(playerName .. ".txt", "Completed-sea2")
+        end
+    end)
+    SetStatus("✅ Đã tạo file " .. (LocalPlayer and LocalPlayer.Name or "Player") .. ".txt và dừng hoạt động.")
+end
+```</Tên_Người_Chơi>
