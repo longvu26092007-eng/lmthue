@@ -3,6 +3,15 @@ getgenv().Settings = {
     ["Reset After Collect Chests"] = 10; -- if you collected 10 chests, it will reset for safe (anti kick)
 }
 
+-- Đổi folder sau khi DONE SOUL GUITAR.
+-- id1/id2 bắt buộc, id3 optional.
+getgenv().ChangeFolderOnCompleted = getgenv().ChangeFolderOnCompleted ~= false
+getgenv().id1 = getgenv().id1 or "........."
+getgenv().id2 = getgenv().id2 or "........."
+-- Không set default cho id3.
+-- Nếu không dùng id3 thì để nil thật:
+-- getgenv().id3 = nil
+
 repeat task.wait(0.5) until game:IsLoaded() and game.Players.LocalPlayer and game.Players.LocalPlayer:FindFirstChildWhichIsA("PlayerGui")
 getgenv().WARCLOADER = true task.delay(10, (function() getgenv().WARCLOADER = nil end))
 
@@ -527,10 +536,101 @@ if LocalPlayer.Data.Level.Value < 2300 then LocalPlayer:Kick("Please Farm Level 
 local all, done = 0, false
 local livingZombieTimer = 0
 
+-- Lock tránh gọi ChangeToFolder nhiều lần khi main loop (0.2s) phát hiện đã có Skull Guitar.
+local CompletedFolderLock = false
+
+-- Chuẩn hóa id1/id2/id3 trước khi truyền vào ChangeToFolder.
+--   id1/id2 (allowNil=false): rỗng / placeholder / "nil" -> (nil, false) -> caller BỎ QUA.
+--   id3 (allowNil=true):     rỗng / placeholder / "nil" -> (nil, true)  -> caller VẪN GỌI với nil thật.
+local function NormalizeFolderId(value, allowNil)
+    if value == nil then
+        return nil, allowNil
+    end
+
+    local s = tostring(value)
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+
+    if s == "" or s == "........." or s:match("^%.+$") or s:lower() == "nil" then
+        return nil, allowNil
+    end
+
+    return s, true
+end
+
+-- Đổi folder ngay sau khi phát hiện Skull Guitar.
+-- Không crash nếu thiếu client / id1 / id2; chỉ warn và skip.
+local function ChangeFolderAfterCompleted(reason)
+    if CompletedFolderLock then
+        return false
+    end
+
+    if getgenv().ChangeFolderOnCompleted == false then
+        warn("[Completed] ChangeFolderOnCompleted = false - bỏ qua đổi folder")
+        return false
+    end
+
+    if not getgenv().client then
+        warn("[Completed] getgenv().client chưa được set - bỏ qua đổi folder")
+        return false
+    end
+
+    if typeof(getgenv().client.ChangeToFolder) ~= "function" then
+        warn("[Completed] getgenv().client.ChangeToFolder không tồn tại - bỏ qua đổi folder")
+        return false
+    end
+
+    local id1, ok1 = NormalizeFolderId(getgenv().id1, false)
+    local id2, ok2 = NormalizeFolderId(getgenv().id2, false)
+    local id3, ok3 = NormalizeFolderId(getgenv().id3, true)
+
+    if not ok1 or not ok2 then
+        warn("[Completed] id1/id2 bắt buộc nhưng đang rỗng - bỏ qua đổi folder")
+        return false
+    end
+
+    CompletedFolderLock = true
+
+    -- Log args trước khi gọi (chỉ để xem, id3 vẫn là nil thật khi truyền vào API).
+    warn(("[Completed] %s -> ChangeToFolder args: id1=%s id2=%s id3=%s"):format(
+        tostring(reason or "Completed"),
+        tostring(id1),
+        tostring(id2),
+        id3 == nil and "nil" or tostring(id3)
+    ))
+
+    local ok, changed = pcall(function()
+        return getgenv().client:ChangeToFolder(id1, id2, true, id3)
+    end)
+
+    if not ok then
+        warn("[Completed] Lỗi khi gọi ChangeToFolder: " .. tostring(changed))
+        CompletedFolderLock = false
+        return false
+    end
+
+    if changed then
+        warn("[Client] Successfully changed folder after Soul Guitar completed, disconnecting to apply changes...")
+        pcall(function()
+            getgenv().client:Disconnect()
+        end)
+        task.wait(5)
+        pcall(function()
+            game:Shutdown()
+        end)
+        return true
+    else
+        warn("[Client] Failed to change folder after Soul Guitar completed")
+        task.wait(10)
+        CompletedFolderLock = false
+        return false
+    end
+end
+
 spawn(function()
     while task.wait(0.2) do
         xpcall(function() local c = 0
             if done or CheckInventory("Skull Guitar") then SetText("DONE SOUL GUITAR") done = true
+            ChangeFolderAfterCompleted("DONE SOUL GUITAR")
             elseif not CheckInventory("Dark Fragment") or CheckMaterial("Dark Fragment") < 1 then
                 if CheckSea(2) then
                     if CheckMonster("Darkbeard") then for _, v2 in next, {workspace.Enemies, ReplicatedStorage} do for _, v in next, v2:GetChildren() do if v.Name == "Darkbeard" then repeat task.wait() SetText("Killing Darkbeard\nHealth: ".. math.floor(v.Humanoid.Health / v.Humanoid.MaxHealth * 100).."%") KillMonster(v.Name) until not v or not v:FindFirstChild("Humanoid") or v.Humanoid.Health <= 0 Tween(false) end end end
