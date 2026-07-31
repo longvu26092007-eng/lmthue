@@ -109,10 +109,80 @@ CheckTool = (function(v)
     for _, v2 in next, x:GetChildren() do if v2:IsA("Tool") and (v2.Name == v or v2.Name:find(v)) then return true end
     end end return false
 end)
-CheckMaterial = (function(x)
-    for _, v in pairs(COMMF_:InvokeServer("getInventory")) do if v.Type == "Material" then if v.Name == x then return v.Count end end
-    end return 0
+-- ==========================================
+-- [ NEW MATERIAL DETECTOR ]
+-- Dùng Inventory + ItemReplicationService thay cho CommF_:getInventory.
+-- Cache ngắn để main loop 0.2s không rebuild toàn bộ inventory liên tục.
+-- ==========================================
+local InventoryController = require(ReplicatedStorage.Controllers.UI.Inventory)
+local ItemConfig = require(ReplicatedStorage.ItemConfig)
+local ItemService = require(ReplicatedStorage.ItemReplicationService)
+local ItemKeys = require(ReplicatedStorage.ItemReplicationService.KEYS)
+
+repeat task.wait(0.2)
+until InventoryController:GetIfInitialized()
+    and ItemService.IsInitialized == true
+
+local MaterialAmounts = {}
+local MaterialLastRefresh = 0
+local MATERIAL_REFRESH_INTERVAL = 0.5
+
+local function RefreshMaterialAmounts(force)
+    local now = tick()
+
+    if not force and now - MaterialLastRefresh < MATERIAL_REFRESH_INTERVAL then
+        return
+    end
+
+    local amountsById = {}
+
+    for _, item in pairs(ItemService:GetItems(ItemKeys.QUANTITY) or {}) do
+        if item and item.ItemId ~= nil then
+            amountsById[item.ItemId] =
+                (amountsById[item.ItemId] or 0)
+                + (tonumber(item.Value) or 0)
+        end
+    end
+
+    local refreshed = {}
+    local checked = {}
+
+    for _, tile in pairs(InventoryController:GetTiles() or {}) do
+        local id = tile and tile.ItemId
+
+        if id ~= nil and not checked[id] then
+            checked[id] = true
+
+            local success, config = pcall(function()
+                return ItemConfig.match(id):unwrap()
+            end)
+
+            if success
+                and config
+                and config.Display
+                and config.Display.Category == "Material" then
+
+                local name =
+                    config.Display.Name
+                    or (config.Index and config.Index.StorageKey)
+                    or tostring(id)
+
+                refreshed[name] = amountsById[id] or 1
+            end
+        end
+    end
+
+    MaterialAmounts = refreshed
+    MaterialLastRefresh = now
+end
+
+CheckMaterial = (function(materialName)
+    RefreshMaterialAmounts(false)
+    return tonumber(MaterialAmounts[materialName]) or 0
 end)
+
+-- Build cache ngay lần đầu để các điều kiện phía dưới có dữ liệu tức thì.
+RefreshMaterialAmounts(true)
 CheckInventory = (function(...)
     for _, v in pairs(COMMF_:InvokeServer("getInventory")) do
     for _, n in next, {...} do if v.Name == n then return true end end
@@ -631,7 +701,7 @@ spawn(function()
         xpcall(function() local c = 0
             if done or CheckInventory("Skull Guitar") then SetText("DONE SOUL GUITAR") done = true
             ChangeFolderAfterCompleted("DONE SOUL GUITAR")
-            elseif not CheckInventory("Dark Fragment") or CheckMaterial("Dark Fragment") < 1 then
+            elseif CheckMaterial("Dark Fragment") < 1 then
                 if CheckSea(2) then
                     if CheckMonster("Darkbeard") then for _, v2 in next, {workspace.Enemies, ReplicatedStorage} do for _, v in next, v2:GetChildren() do if v.Name == "Darkbeard" then repeat task.wait() SetText("Killing Darkbeard\nHealth: ".. math.floor(v.Humanoid.Health / v.Humanoid.MaxHealth * 100).."%") KillMonster(v.Name) until not v or not v:FindFirstChild("Humanoid") or v.Humanoid.Health <= 0 Tween(false) end end end
                     elseif CheckTool("Fist of Darkness") then local Detection = workspace.Map.DarkbeardArena.Summoner.Detection
