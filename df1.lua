@@ -11,12 +11,22 @@
 
     Example configuration:
 
+    getgenv().ChangeDF = 1 -- 1 Dark Fragment -> write PlayerName.txt = Completed-fragment
+
     getgenv().DarkFragConfig = {
         Team = "Marines",
         TargetFragments = 10,
+        ChangeDF = getgenv().ChangeDF,
         TweenSpeed = 275,
         MaxChestsBeforeHop = 25,
         EmptyScansBeforeHop = 3,
+
+        -- Exact Cyborg 4h + 2h chest window logic:
+        -- <4h hop | 4h-6h keep | >6h-8h hop | 8h-10h keep | repeat.
+        RequireChestTimeWindow = true,
+        ChestServerPeriod = 4 * 60 * 60,
+        ChestServerGrace = 2 * 60 * 60,
+
         WSUrl = "ws://127.0.0.1:9876",
         EnableWebSocket = true,
     }
@@ -46,7 +56,8 @@ end
 local UserConfig = getgenv().DarkFragConfig or {}
 local Config = {
     Team = UserConfig.Team or getgenv().Team or "Marines",
-    TargetFragments = tonumber(UserConfig.TargetFragments or getgenv().Lock) or 10,
+    TargetFragments = math.max(0, tonumber(UserConfig.TargetFragments or getgenv().Lock) or 10),
+    ChangeDF = math.max(0, tonumber(UserConfig.ChangeDF or getgenv().ChangeDF) or 0),
     TweenSpeed = tonumber(UserConfig.TweenSpeed) or 275,
     CollectRadius = tonumber(UserConfig.CollectRadius) or 15,
     MaxDistance = tonumber(UserConfig.MaxDistance) or 20000,
@@ -64,11 +75,30 @@ local Config = {
     SignalJoinCooldown = tonumber(UserConfig.SignalJoinCooldown) or 12,
     ServerBlacklistSeconds = tonumber(UserConfig.ServerBlacklistSeconds) or 600,
     HopWaitSeconds = tonumber(UserConfig.HopWaitSeconds) or 12,
+
+    -- Same 4h + 2h server-time rules used by the Cyborg script.
+    RequireChestTimeWindow = UserConfig.RequireChestTimeWindow ~= false,
+    ChestServerPeriod = math.max(
+        1,
+        tonumber(UserConfig.ChestServerPeriod or UserConfig["Chest Server Period"])
+            or (4 * 60 * 60)
+    ),
+    ChestServerGrace = math.max(
+        0,
+        tonumber(UserConfig.ChestServerGrace or UserConfig["Chest Server Grace"])
+            or (2 * 60 * 60)
+    ),
+    TimeInRetryDelay = math.max(1, tonumber(UserConfig.TimeInRetryDelay) or 3),
     Debug = UserConfig.Debug == true,
 }
 
+Config.CompletionTarget = Config.ChangeDF > 0
+    and Config.ChangeDF
+    or Config.TargetFragments
+
 getgenv().DarkFragConfig = Config
-getgenv().Lock = Config.TargetFragments -- backwards compatibility
+getgenv().ChangeDF = Config.ChangeDF
+getgenv().Lock = Config.CompletionTarget -- backwards compatibility
 getgenv().DarkFragRunning = true
 
 local State = {
@@ -100,7 +130,204 @@ local State = {
     LastAttackAt = 0,
     LastSignalKey = nil,
     LastSignalAt = 0,
+    CompletionFileWritten = false,
+    CompletionFileError = nil,
 }
+
+-- ============================================================
+-- REAL SERVER UPTIME + EXACT CYBORG 4H PERIOD / 2H ACTIVE WINDOW
+-- Uses:
+-- workspace:GetServerTimeNow() - Workspace._WorldOrigin.Locations.<Location>.@TimeIn
+--
+-- Exact rule:
+--   below 4h      -> HOP
+--   4h00-6h00     -> KEEP / collect chests
+--   above 6h-8h   -> HOP
+--   8h00-10h00    -> KEEP / collect chests
+--   above 10h-12h -> HOP, then repeat every 4 hours.
+-- Boundaries 6h00, 10h00, ... remain valid; only values above them hop.
+-- ============================================================
+local ServerTimeRuntime = {
+    StartTime = nil,
+    SourcePath = nil,
+    MatchedLocations = 0,
+    LastError = nil,
+}
+
+local function DetectServerStartTimeFromTimeIn()
+    local worldOrigin = workspace:FindFirstChild("_WorldOrigin")
+    local locations = worldOrigin and worldOrigin:FindFirstChild("Locations")
+    if not locations then
+        return nil, nil, "Workspace._WorldOrigin.Locations not found"
+    end
+
+    local groups = {}
+
+    for _, location in ipairs(locations:GetChildren()) do
+        local value = location:GetAttribute("TimeIn")
+
+        if type(value) == "number" and value > 1000000000 then
+            local rounded = math.floor(value + 0.5)
+            groups[rounded] = groups[rounded] or {
+                Count = 0,
+                Total = 0,
+                Names = {},
+            }
+
+            local group = groups[rounded]
+            group.Count = group.Count + 1
+            group.Total = group.Total + value
+            group.Names[#group.Names + 1] = location.Name
+        end
+    end
+
+    local bestRounded
+    local bestGroup
+
+    for rounded, group in pairs(groups) do
+        if not bestGroup
+            or group.Count > bestGroup.Count
+            or (group.Count == bestGroup.Count and rounded < bestRounded) then
+            bestRounded = rounded
+            bestGroup = group
+        end
+    end
+
+    if not bestGroup then
+        return nil, nil, "No valid TimeIn attribute found"
+    end
+
+    local averageTimeIn = bestGroup.Total / bestGroup.Count
+    local exampleName = bestGroup.Names[1] or "Unknown"
+
+    return averageTimeIn, {
+        Count = bestGroup.Count,
+        Path = "Workspace._WorldOrigin.Locations."
+            .. exampleName
+            .. ".@TimeIn",
+    }
+end
+
+local function GetRealServerUptime()
+    if not ServerTimeRuntime.StartTime then
+        local detected, info, err = DetectServerStartTimeFromTimeIn()
+
+        if not detected then
+            ServerTimeRuntime.LastError = err
+            return nil, err
+        end
+
+        ServerTimeRuntime.StartTime = detected
+        ServerTimeRuntime.SourcePath = info.Path
+        ServerTimeRuntime.MatchedLocations = info.Count
+        ServerTimeRuntime.LastError = nil
+    end
+
+    local ok, serverNow = pcall(function()
+        return workspace:GetServerTimeNow()
+    end)
+
+    if not ok or type(serverNow) ~= "number" then
+        ServerTimeRuntime.LastError = "Workspace:GetServerTimeNow() failed"
+        return nil, ServerTimeRuntime.LastError
+    end
+
+    local uptime = serverNow - ServerTimeRuntime.StartTime
+
+    if uptime < 0 or uptime >= 31536000 then
+        ServerTimeRuntime.LastError = "TimeIn is invalid"
+        return nil, ServerTimeRuntime.LastError
+    end
+
+    local source = string.format(
+        "%s | matched %d Locations",
+        tostring(ServerTimeRuntime.SourcePath),
+        tonumber(ServerTimeRuntime.MatchedLocations) or 0
+    )
+
+    return uptime, source
+end
+
+local function FormatUptime(seconds)
+    seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+    local secs = seconds % 60
+    return string.format("%02d:%02d:%02d", hours, minutes, secs)
+end
+
+local function CheckChestTimeWindow()
+    local uptime, source = GetRealServerUptime()
+    if not uptime then
+        return false, nil, source, nil
+    end
+
+    if not Config.RequireChestTimeWindow then
+        return true, uptime, source, {
+            Phase = "DISABLED",
+            Offset = uptime,
+            CycleStart = 0,
+            CycleEnd = math.huge,
+            NextBoundary = math.huge,
+            Remaining = math.huge,
+        }
+    end
+
+    local period = math.max(1, tonumber(Config.ChestServerPeriod) or (4 * 60 * 60))
+    local grace = math.max(0, tonumber(Config.ChestServerGrace) or (2 * 60 * 60))
+    local firstWindowStart = period
+
+    if uptime < firstWindowStart then
+        return false, uptime, source, {
+            Phase = "BEFORE_FIRST_WINDOW",
+            Offset = uptime,
+            CycleStart = firstWindowStart,
+            CycleEnd = firstWindowStart + grace,
+            NextBoundary = firstWindowStart,
+            Remaining = firstWindowStart - uptime,
+        }
+    end
+
+    local windowIndex = math.floor((uptime - firstWindowStart) / period)
+    local cycleStart = firstWindowStart + (windowIndex * period)
+    local cycleEnd = cycleStart + grace
+    local offset = uptime - cycleStart
+
+    -- Exactly like the Cyborg script: 6h00 / 10h00 / ... are still kept.
+    local inWindow = uptime <= cycleEnd
+    local nextBoundary = inWindow and cycleEnd or (cycleStart + period)
+
+    return inWindow, uptime, source, {
+        Phase = inWindow and "ACTIVE" or "OUTSIDE",
+        Offset = offset,
+        CycleStart = cycleStart,
+        CycleEnd = cycleEnd,
+        NextBoundary = nextBoundary,
+        Remaining = math.max(0, nextBoundary - uptime),
+    }
+end
+
+local function buildWindowStatus(inWindow, uptime, timeInfo)
+    if not uptime or not timeInfo then
+        return "TimeIn unavailable"
+    end
+
+    if timeInfo.Phase == "DISABLED" then
+        return "DISABLED"
+    end
+
+    if inWindow then
+        return "ACTIVE "
+            .. FormatUptime(timeInfo.CycleStart)
+            .. " -> "
+            .. FormatUptime(timeInfo.CycleEnd)
+    end
+
+    return "HOP | next "
+        .. FormatUptime(timeInfo.NextBoundary)
+        .. " | remaining "
+        .. FormatUptime(timeInfo.Remaining)
+end
 
 local function debugPrint(...)
     if Config.Debug then
@@ -310,6 +537,42 @@ end
 
 local function getMaterialCount(materialName)
     return tonumber(State.MaterialCounts[normalizeName(materialName)]) or 0
+end
+
+local CompletionFile = Player.Name .. ".txt"
+
+local function writeCompletedFragmentFile()
+    if Config.ChangeDF <= 0 then
+        return true
+    end
+
+    if State.CompletionFileWritten then
+        return true
+    end
+
+    if type(writefile) ~= "function" then
+        State.CompletionFileError = "writefile is unavailable"
+        return false
+    end
+
+    local lastError = "unknown"
+    for _ = 1, 3 do
+        local ok, err = pcall(function()
+            writefile(CompletionFile, "Completed-fragment")
+        end)
+
+        if ok then
+            State.CompletionFileWritten = true
+            State.CompletionFileError = nil
+            return true
+        end
+
+        lastError = tostring(err)
+        task.wait(0.2)
+    end
+
+    State.CompletionFileError = lastError
+    return false
 end
 
 seedItemMetadata()
@@ -880,8 +1143,8 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 150)
-MainFrame.Position = UDim2.new(0, 15, 0.5, -75)
+MainFrame.Size = UDim2.new(0, 300, 0, 190)
+MainFrame.Position = UDim2.new(0, 15, 0.5, -95)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 MainFrame.BackgroundTransparency = 0.12
 MainFrame.BorderSizePixel = 0
@@ -906,7 +1169,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -12, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "Dark Fragment Farm - Optimized"
+Title.Text = "Dark Fragment Farm - 4H+2H Optimized"
 Title.TextColor3 = Color3.fromRGB(190, 100, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
@@ -935,10 +1198,12 @@ end
 
 local StatusLabel = createLabel(0, "Status: Starting...", Color3.fromRGB(100, 255, 150), 11, Enum.Font.GothamSemibold)
 local CountLabel = createLabel(19, "Chests: 0 | Kills: 0", Color3.fromRGB(255, 215, 80), 11, Enum.Font.GothamSemibold)
-local FragmentLabel = createLabel(38, "Fragments: 0/" .. Config.TargetFragments, Color3.fromRGB(210, 120, 255), 11, Enum.Font.GothamSemibold)
+local FragmentLabel = createLabel(38, "Fragments: 0/" .. Config.CompletionTarget, Color3.fromRGB(210, 120, 255), 11, Enum.Font.GothamSemibold)
 local PhaseLabel = createLabel(57, "Phase: INIT", Color3.fromRGB(150, 140, 255), 11)
 local WSLabel = createLabel(76, "WebSocket: connecting", Color3.fromRGB(130, 190, 255), 10)
-local ExtraLabel = createLabel(95, "Target: --", Color3.fromRGB(170, 170, 190), 10)
+local ServerTimeLabel = createLabel(95, "Server Time (TimeIn): waiting...", Color3.fromRGB(255, 232, 133), 10, Enum.Font.GothamSemibold)
+local WindowLabel = createLabel(114, "4h + 2h Window: waiting...", Color3.fromRGB(183, 207, 232), 10, Enum.Font.GothamSemibold)
+local ExtraLabel = createLabel(133, "Target: --", Color3.fromRGB(170, 170, 190), 10)
 
 local dragging = false
 local dragStart
@@ -978,9 +1243,26 @@ task.spawn(function()
         local fragments = getMaterialCount("Dark Fragment")
         StatusLabel.Text = "Status: " .. State.Status
         CountLabel.Text = "Chests: " .. State.ChestCount .. " | Kills: " .. State.KillCount
-        FragmentLabel.Text = "Fragments: " .. fragments .. "/" .. Config.TargetFragments
+        FragmentLabel.Text = "Fragments: " .. fragments .. "/" .. Config.CompletionTarget
         PhaseLabel.Text = "Phase: " .. State.Phase
         WSLabel.Text = "WebSocket: " .. (State.WSConnected and "connected" or "offline")
+
+        local inWindow, uptime, source, timeInfo = CheckChestTimeWindow()
+        if uptime then
+            ServerTimeLabel.Text = "Server Time (TimeIn): " .. FormatUptime(uptime)
+            WindowLabel.Text = "4h + 2h Window: " .. buildWindowStatus(inWindow, uptime, timeInfo)
+            WindowLabel.TextColor3 = inWindow
+                and Color3.fromRGB(109, 222, 161)
+                or Color3.fromRGB(246, 197, 88)
+        else
+            ServerTimeLabel.Text = "Server Time (TimeIn): waiting..."
+            WindowLabel.Text = "4h + 2h Window: cannot evaluate"
+            WindowLabel.TextColor3 = Color3.fromRGB(239, 104, 104)
+            if State.Phase == "TIME_CHECK" then
+                State.Extra = tostring(source or ServerTimeRuntime.LastError or "unknown")
+            end
+        end
+
         ExtraLabel.Text = State.Extra
         task.wait(0.35)
     end
@@ -1301,14 +1583,28 @@ bindConnection(Player.Idled:Connect(function()
 end))
 
 local function targetReached()
-    return getMaterialCount("Dark Fragment") >= Config.TargetFragments
+    return getMaterialCount("Dark Fragment") >= Config.CompletionTarget
 end
 
 local function finishIfComplete()
     local amount = getMaterialCount("Dark Fragment")
-    if amount < Config.TargetFragments then return false end
+    if amount < Config.CompletionTarget then return false end
 
-    setStatus("DONE! " .. amount .. " Dark Fragments", "COMPLETE", "Farm stopped")
+    if not writeCompletedFragmentFile() then
+        setStatus(
+            "Target reached but completion file failed",
+            "ERROR",
+            CompletionFile .. " | " .. tostring(State.CompletionFileError)
+        )
+        task.wait(2)
+        return false
+    end
+
+    local completionExtra = Config.ChangeDF > 0
+        and ("Saved: " .. CompletionFile .. " = Completed-fragment")
+        or "Farm stopped"
+
+    setStatus("DONE! " .. amount .. " Dark Fragments", "COMPLETE", completionExtra)
     cancelMovement()
 
     if State.WS then
@@ -1436,11 +1732,41 @@ task.spawn(function()
             continue
         end
 
+        -- Chest farming is allowed only inside the exact Cyborg 4h + 2h windows.
+        -- Boss/Fist checks above always have priority, even outside the window.
+        if Config.RequireChestTimeWindow then
+            local inWindow, uptime, uptimeSource, timeInfo = CheckChestTimeWindow()
+
+            if not uptime then
+                setStatus(
+                    "Cannot read server uptime",
+                    "TIME_CHECK",
+                    tostring(uptimeSource or ServerTimeRuntime.LastError or "unknown")
+                )
+                task.wait(Config.TimeInRetryDelay)
+                continue
+            elseif not inWindow then
+                setStatus(
+                    "Outside valid 4h + 2h window",
+                    "TIME_HOP",
+                    "Uptime: "
+                        .. FormatUptime(uptime)
+                        .. " | Next valid: "
+                        .. FormatUptime(timeInfo.NextBoundary)
+                )
+                task.wait(1)
+                hopServer("Outside 4h + 2h chest window; hopping...")
+                continue
+            end
+        end
+
         State.Phase = "CHESTING"
         State.ChestCount = 0
         State.ConfirmedChestKeys = {}
         State.FailedChestKeys = {}
         local emptyScans = 0
+        local timeWindowHop = false
+        local timeWindowUnavailable = false
         setStatus("Scanning chests...", "CHESTING", "Target: nearest chest")
 
         while State.Running and State.ChestCount < Config.MaxChestsBeforeHop do
@@ -1449,6 +1775,32 @@ task.spawn(function()
             State.Darkbeard = findDarkbeard()
             State.HasFist = hasFistOfDarkness()
             if State.Darkbeard or State.HasFist then break end
+
+            -- Re-check during chesting so crossing 6h/10h/... immediately stops chest farm.
+            if Config.RequireChestTimeWindow then
+                local inWindow, uptime, uptimeSource, timeInfo = CheckChestTimeWindow()
+
+                if not uptime then
+                    timeWindowUnavailable = true
+                    setStatus(
+                        "Cannot read server uptime",
+                        "TIME_CHECK",
+                        tostring(uptimeSource or ServerTimeRuntime.LastError or "unknown")
+                    )
+                    break
+                elseif not inWindow then
+                    timeWindowHop = true
+                    setStatus(
+                        "4h + 2h window closed",
+                        "TIME_HOP",
+                        "Uptime: "
+                            .. FormatUptime(uptime)
+                            .. " | Next valid: "
+                            .. FormatUptime(timeInfo.NextBoundary)
+                    )
+                    break
+                end
+            end
 
             local _, root = getCharacterParts()
             if not root then
@@ -1481,6 +1833,32 @@ task.spawn(function()
             for index, chest in ipairs(chests) do
                 if not State.Running or State.ChestCount >= Config.MaxChestsBeforeHop then break end
                 if findDarkbeard() or hasFistOfDarkness() then break end
+
+                -- Re-check before every chest as well, preserving the exact close boundary.
+                if Config.RequireChestTimeWindow then
+                    local inWindow, uptime, uptimeSource, timeInfo = CheckChestTimeWindow()
+
+                    if not uptime then
+                        timeWindowUnavailable = true
+                        setStatus(
+                            "Cannot read server uptime",
+                            "TIME_CHECK",
+                            tostring(uptimeSource or ServerTimeRuntime.LastError or "unknown")
+                        )
+                        break
+                    elseif not inWindow then
+                        timeWindowHop = true
+                        setStatus(
+                            "4h + 2h window closed",
+                            "TIME_HOP",
+                            "Uptime: "
+                                .. FormatUptime(uptime)
+                                .. " | Next valid: "
+                                .. FormatUptime(timeInfo.NextBoundary)
+                        )
+                        break
+                    end
+                end
 
                 local _, currentRoot = getCharacterParts()
                 if not currentRoot then break end
@@ -1515,6 +1893,17 @@ task.spawn(function()
         end
 
         if not State.Running then return end
+
+        if timeWindowUnavailable then
+            task.wait(Config.TimeInRetryDelay)
+            continue
+        end
+
+        if timeWindowHop then
+            task.wait(1)
+            hopServer("4h + 2h chest window closed; hopping...")
+            continue
+        end
 
         State.Darkbeard = findDarkbeard()
         State.HasFist = hasFistOfDarkness()
