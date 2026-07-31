@@ -1,5 +1,5 @@
 --[[
-    DARK FRAGMENT FARM - OPTIMIZED
+    DARK FRAGMENT FARM - OPTIMIZED | SERVERBROWSER 200 FIX
 
     Main flow:
       1) Select team / travel to Sea 2
@@ -8,6 +8,7 @@
       4) Summon and farm Darkbeard
       5) Server hop and repeat until target Dark Fragments is reached
       6) Share Fist/Darkbeard servers through the local Node.js WebSocket server
+      7) Hop only through __ServerBrowser (parallel scan, no public server API)
 
     Example configuration:
 
@@ -26,6 +27,13 @@
         RequireChestTimeWindow = true,
         ChestServerPeriod = 4 * 60 * 60,
         ChestServerGrace = 2 * 60 * 60,
+
+        -- Fast __ServerBrowser scanner (public Roblox server API is not used).
+        HopMaxPages = 200,
+        HopPagesPerBatch = 200,
+        HopScanConcurrency = 70,
+        HopBatchTimeout = 18,
+        HopMaxPlayers = 9,
 
         WSUrl = "ws://127.0.0.1:9876",
         EnableWebSocket = true,
@@ -76,6 +84,34 @@ local Config = {
     ServerBlacklistSeconds = tonumber(UserConfig.ServerBlacklistSeconds) or 600,
     HopWaitSeconds = tonumber(UserConfig.HopWaitSeconds) or 12,
 
+    -- Fast __ServerBrowser-only scanner. No games.roblox.com public server API.
+    HopMaxPages = math.max(
+        1,
+        math.floor(tonumber(UserConfig.HopMaxPages or UserConfig["Hop Max Pages"]) or 200)
+    ),
+    HopPagesPerBatch = math.max(
+        1,
+        math.floor(tonumber(UserConfig.HopPagesPerBatch or UserConfig["Hop Pages Per Batch"]) or 200)
+    ),
+    HopScanConcurrency = math.max(
+        1,
+        math.floor(tonumber(UserConfig.HopScanConcurrency or UserConfig["Hop Scan Concurrency"]) or 70)
+    ),
+    HopBatchTimeout = math.max(
+        3,
+        tonumber(UserConfig.HopBatchTimeout or UserConfig["Hop Batch Timeout"]) or 18
+    ),
+    HopMaxPlayers = math.max(
+        1,
+        math.floor(tonumber(UserConfig.HopMaxPlayers or UserConfig["Hop Max Players"]) or 9)
+    ),
+
+    -- Boss cleanup protection. ReplicatedStorage can keep a reset Darkbeard template
+    -- after the real workspace boss dies; never let that stale model lock the farm.
+    BossDeathConfirmDelay = math.max(0.5, tonumber(UserConfig.BossDeathConfirmDelay) or 1.5),
+    ReplicatedBossLocateTimeout = math.max(2, tonumber(UserConfig.ReplicatedBossLocateTimeout) or 8),
+    ReplicatedBossIgnoreSeconds = math.max(5, tonumber(UserConfig.ReplicatedBossIgnoreSeconds) or 30),
+
     -- Same 4h + 2h server-time rules used by the Cyborg script.
     RequireChestTimeWindow = UserConfig.RequireChestTimeWindow ~= false,
     ChestServerPeriod = math.max(
@@ -91,6 +127,9 @@ local Config = {
     TimeInRetryDelay = math.max(1, tonumber(UserConfig.TimeInRetryDelay) or 3),
     Debug = UserConfig.Debug == true,
 }
+
+Config.HopPagesPerBatch = math.min(Config.HopPagesPerBatch, Config.HopMaxPages)
+Config.HopScanConcurrency = math.min(Config.HopScanConcurrency, Config.HopPagesPerBatch)
 
 Config.CompletionTarget = Config.ChangeDF > 0
     and Config.ChangeDF
@@ -130,6 +169,16 @@ local State = {
     LastAttackAt = 0,
     LastSignalKey = nil,
     LastSignalAt = 0,
+    IgnoreReplicatedDarkbeardUntil = 0,
+    HopNextPage = 1,
+    HopScan = {
+        Status = "Idle",
+        RequestedPages = 0,
+        CompletedPages = 0,
+        FailedPages = 0,
+        Candidates = 0,
+        TimedOut = false,
+    },
     CompletionFileWritten = false,
     CompletionFileError = nil,
 }
@@ -750,21 +799,28 @@ local function findDarkbeard()
     local enemies = workspace:FindFirstChild("Enemies")
     if enemies then
         local boss = enemies:FindFirstChild("Darkbeard")
-        if boss and isAlive(boss) then return boss end
+        if boss and isAlive(boss) then
+            return boss, "workspace"
+        end
     end
 
     local workspaceBoss = workspace:FindFirstChild("Darkbeard")
     if workspaceBoss and isAlive(workspaceBoss) then
-        return workspaceBoss
+        return workspaceBoss, "workspace"
     end
 
-    -- A living model can temporarily be replicated outside workspace when far away.
-    local replicatedBoss = ReplicatedStorage:FindFirstChild("Darkbeard")
-    if replicatedBoss and isAlive(replicatedBoss) then
-        return replicatedBoss
+    -- ReplicatedStorage can contain either:
+    --   1) a real streamed-out boss, or
+    --   2) a reset/template model left after the workspace boss was killed.
+    -- The ignore deadline prevents case (2) from locking several accounts forever.
+    if os.clock() >= (State.IgnoreReplicatedDarkbeardUntil or 0) then
+        local replicatedBoss = ReplicatedStorage:FindFirstChild("Darkbeard")
+        if replicatedBoss and isAlive(replicatedBoss) then
+            return replicatedBoss, "replicated"
+        end
     end
 
-    return nil
+    return nil, nil
 end
 
 task.spawn(function()
@@ -1120,8 +1176,10 @@ local function summonDarkbeard()
 
     local deadline = os.clock() + 12
     while State.Running and os.clock() < deadline do
-        local boss = findDarkbeard()
-        if boss then
+        local boss, source = findDarkbeard()
+        -- Confirm only the real workspace boss. A replicated-only model may be
+        -- the stale reset/template instance from a previous Darkbeard kill.
+        if boss and source == "workspace" then
             State.Darkbeard = boss
             return true
         end
@@ -1169,7 +1227,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -12, 1, 0)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "Dark Fragment Farm - 4H+2H Optimized"
+Title.Text = "Dark Fragment Farm - 4H+2H | SB200 FIX"
 Title.TextColor3 = Color3.fromRGB(190, 100, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.GothamBold
@@ -1448,81 +1506,127 @@ local function serverBlocked(jobId)
     return true
 end
 
-local function getServersFromAPI()
+local function getServersFromBrowser()
+    local pages = {}
+    local startPage = tonumber(State.HopNextPage) or 1
+    if startPage < 1 or startPage > Config.HopMaxPages then
+        startPage = 1
+    end
+
+    for offset = 0, Config.HopPagesPerBatch - 1 do
+        pages[#pages + 1] = ((startPage - 1 + offset) % Config.HopMaxPages) + 1
+    end
+
     local servers = {}
-    local cursor = ""
+    local seenJobs = {}
+    local cursor = 0
+    local completed = 0
+    local failed = 0
+    local workersDone = 0
+    local active = true
+    local workerCount = math.min(Config.HopScanConcurrency, #pages)
+    local startedAt = os.clock()
 
-    for _ = 1, 3 do
-        local url = "https://games.roblox.com/v1/games/"
-            .. game.PlaceId
-            .. "/servers/Public?sortOrder=Asc&limit=100&cursor="
-            .. HttpService:UrlEncode(cursor)
+    State.HopScan.Status = "Scanning"
+    State.HopScan.RequestedPages = #pages
+    State.HopScan.CompletedPages = 0
+    State.HopScan.FailedPages = 0
+    State.HopScan.Candidates = 0
+    State.HopScan.TimedOut = false
 
-        local ok, response = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet(url))
-        end)
+    local function processPage(data)
+        if type(data) ~= "table" then return end
 
-        if not ok or type(response) ~= "table" or type(response.data) ~= "table" then
-            break
-        end
+        for jobId, info in pairs(data) do
+            local id = tostring(jobId)
+            local count = type(info) == "table" and tonumber(info.Count) or nil
 
-        for _, server in ipairs(response.data) do
-            if type(server) == "table"
-                and type(server.id) == "string"
-                and tonumber(server.playing)
-                and tonumber(server.playing) >= 1
-                and tonumber(server.playing) <= 9
-                and not serverBlocked(server.id) then
+            if id ~= tostring(game.JobId)
+                and not seenJobs[id]
+                and count
+                and count >= 1
+                and count <= Config.HopMaxPlayers
+                and not serverBlocked(id) then
+                seenJobs[id] = true
                 servers[#servers + 1] = {
-                    id = server.id,
-                    playing = tonumber(server.playing),
+                    id = id,
+                    playing = count,
+                    lastUpdate = tonumber(info.__LastUpdate) or 0,
+                    region = info.Region or info.Regoin or "Unknown",
                 }
             end
         end
-
-        cursor = response.nextPageCursor or ""
-        if cursor == "" or #servers >= 30 then break end
     end
 
-    table.sort(servers, function(a, b)
-        return a.playing < b.playing
-    end)
+    local function worker()
+        while active do
+            cursor = cursor + 1
+            local index = cursor
+            local page = pages[index]
+            if not page then break end
 
-    return servers
-end
+            local ok, data = pcall(function()
+                return ServerBrowser:InvokeServer(page)
+            end)
 
-local function getServersFromBrowser()
-    local servers = {}
+            if not active then break end
 
-    for page = 1, 100 do
-        local ok, data = pcall(function()
-            return ServerBrowser:InvokeServer(page)
-        end)
+            if ok and type(data) == "table" then
+                processPage(data)
+            else
+                failed = failed + 1
+            end
 
-        if ok and type(data) == "table" then
-            for jobId, info in pairs(data) do
-                local count = type(info) == "table" and tonumber(info.Count) or nil
-                if type(jobId) == "string"
-                    and count
-                    and count >= 1
-                    and count <= 9
-                    and not serverBlocked(jobId) then
-                    servers[#servers + 1] = {
-                        id = jobId,
-                        playing = count,
-                    }
-                end
+            completed = completed + 1
+            State.HopScan.CompletedPages = completed
+            State.HopScan.FailedPages = failed
+            State.HopScan.Candidates = #servers
+
+            if completed == #pages or completed % 10 == 0 then
+                setStatus(
+                    "ServerBrowser scan " .. completed .. "/" .. #pages,
+                    "HOPPING",
+                    "Workers: " .. workerCount
+                        .. " | Candidates: " .. #servers
+                        .. " | Failed: " .. failed
+                )
             end
         end
 
-        if #servers >= 30 then break end
-        task.wait(0.05)
+        workersDone = workersDone + 1
     end
 
+    for _ = 1, workerCount do
+        task.spawn(worker)
+    end
+
+    repeat
+        task.wait(0.05)
+    until workersDone >= workerCount
+        or (os.clock() - startedAt) >= Config.HopBatchTimeout
+
+    if workersDone < workerCount then
+        active = false
+        State.HopScan.TimedOut = true
+        State.HopScan.Status = "Timeout"
+    else
+        State.HopScan.Status = "Complete"
+    end
+
+    local lastPage = pages[#pages] or startPage
+    State.HopNextPage = (lastPage % Config.HopMaxPages) + 1
+
     table.sort(servers, function(a, b)
-        return a.playing < b.playing
+        if a.playing ~= b.playing then
+            return a.playing < b.playing
+        end
+        if a.lastUpdate ~= b.lastUpdate then
+            return a.lastUpdate > b.lastUpdate
+        end
+        return a.id < b.id
     end)
 
+    State.HopScan.Candidates = #servers
     return servers
 end
 
@@ -1533,40 +1637,55 @@ local function hopServer(reason)
     State.VisitedServers[game.JobId] = math.huge
 
     while State.Running do
-        setStatus(reason or "Finding server...", "HOPPING", "Scanning low-player servers")
+        setStatus(
+            reason or "Finding server...",
+            "HOPPING",
+            "ServerBrowser only | parallel scan up to "
+                .. Config.HopPagesPerBatch
+                .. "/"
+                .. Config.HopMaxPages
+                .. " pages"
+        )
 
-        local servers = getServersFromAPI()
-        if #servers == 0 then
-            setStatus("API unavailable, using browser...", "HOPPING")
-            servers = getServersFromBrowser()
-        end
+        -- Public games.roblox.com server API was intentionally removed.
+        local servers = getServersFromBrowser()
 
         if #servers == 0 then
-            setStatus("No server found; retrying...", "HOPPING")
-            task.wait(5)
+            setStatus(
+                "No eligible ServerBrowser result; retrying...",
+                "HOPPING",
+                "Completed: " .. State.HopScan.CompletedPages
+                    .. "/" .. State.HopScan.RequestedPages
+                    .. " | Failed: " .. State.HopScan.FailedPages
+            )
+            task.wait(2)
             continue
         end
 
-        -- Randomize only among the five least populated servers.
-        local selectionSize = math.min(5, #servers)
-        local selected = servers[math.random(1, selectionSize)]
+        -- Same choice policy as the Cyborg scanner: lowest player count first.
+        local selected = servers[1]
         State.VisitedServers[selected.id] = os.clock() + Config.ServerBlacklistSeconds
         teleportFailedFor = nil
 
         setStatus(
-            "Joining server (" .. selected.playing .. " players)...",
+            "Joining best ServerBrowser server (" .. selected.playing .. " players)...",
             "HOPPING",
             "JobId: " .. string.sub(selected.id, 1, 8)
+                .. " | Region: " .. tostring(selected.region)
         )
 
-        pcall(function()
+        local ok = pcall(function()
             ServerBrowser:InvokeServer("teleport", selected.id)
         end)
+
+        if not ok then
+            teleportFailedFor = selected.id
+        end
 
         local deadline = os.clock() + Config.HopWaitSeconds
         while State.Running and os.clock() < deadline do
             if teleportFailedFor then break end
-            task.wait(0.5)
+            task.wait(0.35)
         end
     end
 
@@ -1620,38 +1739,92 @@ local function finishIfComplete()
 end
 
 local function farmDarkbeard()
-    sendSignal("darkbeard_found")
-    setStatus("Darkbeard found", "FARMING", "Target: Darkbeard")
+    local initialBoss, initialSource = findDarkbeard()
+    if not initialBoss then
+        return false
+    end
+
+    if initialSource == "workspace" then
+        sendSignal("darkbeard_found")
+        setStatus("Darkbeard found", "FARMING", "Target: live Darkbeard")
+    else
+        setStatus(
+            "Darkbeard replicated; locating live boss...",
+            "FARMING",
+            "Waiting for workspace spawn"
+        )
+    end
 
     local sawLiveBoss = false
-    local missingSince = nil
+    local liveMissingSince = nil
+    local replicatedOnlySince = initialSource == "replicated" and os.clock() or nil
 
     while State.Running do
         if finishIfComplete() then return true end
 
-        local boss = findDarkbeard()
+        local boss, source = findDarkbeard()
         State.Darkbeard = boss
 
-        if not boss then
-            missingSince = missingSince or os.clock()
-            if sawLiveBoss and os.clock() - missingSince >= 2 then
+        -- Critical fix:
+        -- Once a real workspace boss has been observed, a Darkbeard model that
+        -- reappears only in ReplicatedStorage is treated as the reset template.
+        -- It must not reset the death timer or keep the account on
+        -- "Darkbeard found" forever.
+        if source == "workspace" and boss and isAlive(boss) then
+            if not sawLiveBoss then
+                sawLiveBoss = true
+                sendSignal("darkbeard_found")
+                setStatus("Darkbeard found", "FARMING", "Target: live Darkbeard")
+            end
+            liveMissingSince = nil
+            replicatedOnlySince = nil
+        elseif sawLiveBoss then
+            liveMissingSince = liveMissingSince or os.clock()
+
+            if os.clock() - liveMissingSince >= Config.BossDeathConfirmDelay then
                 State.KillCount = State.KillCount + 1
+                State.Darkbeard = nil
+                State.IgnoreReplicatedDarkbeardUntil = os.clock()
+                    + Config.ReplicatedBossIgnoreSeconds
                 cancelMovement()
-                task.wait(3)
+                setStatus(
+                    "Darkbeard defeated",
+                    "BOSS_DONE",
+                    "Confirmed workspace boss disappeared"
+                )
+                task.wait(2)
                 refreshMaterialCounts()
                 return true
             end
-            if not sawLiveBoss and os.clock() - missingSince >= 8 then
+
+            task.wait(0.15)
+            continue
+        elseif source == "replicated" then
+            replicatedOnlySince = replicatedOnlySince or os.clock()
+
+            if os.clock() - replicatedOnlySince >= Config.ReplicatedBossLocateTimeout then
+                State.Darkbeard = nil
+                State.IgnoreReplicatedDarkbeardUntil = os.clock()
+                    + Config.ReplicatedBossIgnoreSeconds
+                cancelMovement()
+                setStatus(
+                    "Ignored stale replicated Darkbeard",
+                    "BOSS_STALE",
+                    "No live workspace boss appeared"
+                )
+                return false
+            end
+        else
+            liveMissingSince = liveMissingSince or os.clock()
+
+            if not sawLiveBoss
+                and os.clock() - liveMissingSince >= Config.ReplicatedBossLocateTimeout then
                 cancelMovement()
                 return false
             end
+
             task.wait(0.2)
             continue
-        end
-
-        missingSince = nil
-        if boss.Parent ~= ReplicatedStorage and isAlive(boss) then
-            sawLiveBoss = true
         end
 
         local character, root = getCharacterParts()
@@ -1665,13 +1838,14 @@ local function farmDarkbeard()
 
         equipMelee()
 
-        local bossRoot = boss:FindFirstChild("HumanoidRootPart")
+        local bossRoot = boss and boss:FindFirstChild("HumanoidRootPart")
         if bossRoot then
             local targetCFrame = bossRoot.CFrame * CFrame.new(0, Config.BossHeight, 0)
             local distance = (root.Position - bossRoot.Position).Magnitude
 
             if distance > 72 then
-                if not State.MoveTarget or (State.MoveTarget - targetCFrame.Position).Magnitude > 12 then
+                if not State.MoveTarget
+                    or (State.MoveTarget - targetCFrame.Position).Magnitude > 12 then
                     startMovement(targetCFrame.Position)
                 end
             else
@@ -1682,7 +1856,9 @@ local function farmDarkbeard()
             end
         end
 
-        if boss.Parent ~= ReplicatedStorage then
+        -- Never attack the ReplicatedStorage template. It is only used as a
+        -- temporary location hint while waiting for the real workspace model.
+        if source == "workspace" then
             attackBoss(boss)
         end
 
