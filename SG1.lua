@@ -110,44 +110,135 @@ CheckTool = (function(v)
     end end return false
 end)
 -- ==========================================
--- [ NEW MATERIAL DETECTOR ]
--- Dùng Inventory + ItemReplicationService thay cho CommF_:getInventory.
--- Cache ngắn để main loop 0.2s không rebuild toàn bộ inventory liên tục.
+-- [ INVENTORY + MATERIAL DETECTOR ]
+-- Nguồn dữ liệu duy nhất:
+--   Inventory Controller
+--   ItemConfig
+--   ItemReplicationService
+--
+-- Giữ nguyên API nội bộ:
+--   CheckInventory(...)
+--   CheckMaterial(name)
+-- để toàn bộ logic Soul Guitar phía dưới không bị thay đổi.
 -- ==========================================
 local InventoryController = require(ReplicatedStorage.Controllers.UI.Inventory)
 local ItemConfig = require(ReplicatedStorage.ItemConfig)
 local ItemService = require(ReplicatedStorage.ItemReplicationService)
 local ItemKeys = require(ReplicatedStorage.ItemReplicationService.KEYS)
 
-repeat task.wait(0.2)
+repeat
+    task.wait(0.2)
 until InventoryController:GetIfInitialized()
     and ItemService.IsInitialized == true
 
-local MaterialAmounts = {}
-local MaterialLastRefresh = 0
-local MATERIAL_REFRESH_INTERVAL = 0.5
+local InventoryGroups = {
+    ["Sword"] = {},
+    ["Gun"] = {},
+    ["Accessory"] = {},
+    ["Material"] = {},
+    ["Blox Fruit"] = {}
+}
 
-local function RefreshMaterialAmounts(force)
+local InventoryGroupOrder = {
+    "Sword",
+    "Gun",
+    "Accessory",
+    "Material",
+    "Blox Fruit"
+}
+
+local InventoryAmountsByName = {}
+local InventoryCategoryByName = {}
+local InventoryLastRefresh = 0
+local INVENTORY_REFRESH_INTERVAL = 0.5
+
+local function NormalizeInventoryName(value)
+    return tostring(value or "")
+        :lower()
+        :gsub("^%s+", "")
+        :gsub("%s+$", "")
+end
+
+-- Tương thích tên cũ mà script đang dùng.
+-- Trong một số source cũ Soul Guitar được gọi là Skull Guitar.
+local InventoryNameAliases = {
+    ["skull guitar"] = "soul guitar",
+    ["soul guitar"] = "skull guitar"
+}
+
+local function ClearInventoryCache()
+    InventoryAmountsByName = {}
+    InventoryCategoryByName = {}
+
+    for _, category in ipairs(InventoryGroupOrder) do
+        InventoryGroups[category] = {}
+    end
+end
+
+local function AddInventoryEntry(category, name, amount)
+    if not InventoryGroups[category] then
+        return
+    end
+
+    name = tostring(name or "")
+    if name == "" then
+        return
+    end
+
+    amount = tonumber(amount) or 1
+    if amount < 0 then
+        amount = 0
+    end
+
+    InventoryGroups[category][name] =
+        (InventoryGroups[category][name] or 0) + amount
+
+    local normalized = NormalizeInventoryName(name)
+
+    InventoryAmountsByName[normalized] =
+        (InventoryAmountsByName[normalized] or 0) + amount
+
+    InventoryCategoryByName[normalized] = category
+end
+
+local function RefreshInventoryCache(force)
     local now = tick()
 
-    if not force and now - MaterialLastRefresh < MATERIAL_REFRESH_INTERVAL then
-        return
+    if not force
+        and now - InventoryLastRefresh < INVENTORY_REFRESH_INTERVAL
+    then
+        return true
     end
 
     local amountsById = {}
 
-    for _, item in pairs(ItemService:GetItems(ItemKeys.QUANTITY) or {}) do
-        if item and item.ItemId ~= nil then
-            amountsById[item.ItemId] =
-                (amountsById[item.ItemId] or 0)
-                + (tonumber(item.Value) or 0)
+    local quantityOk, quantityItems = pcall(function()
+        return ItemService:GetItems(ItemKeys.QUANTITY)
+    end)
+
+    if quantityOk and type(quantityItems) == "table" then
+        for _, item in pairs(quantityItems) do
+            if item and item.ItemId ~= nil then
+                amountsById[item.ItemId] =
+                    (amountsById[item.ItemId] or 0)
+                    + (tonumber(item.Value) or 0)
+            end
         end
     end
 
-    local refreshed = {}
+    local tilesOk, tiles = pcall(function()
+        return InventoryController:GetTiles()
+    end)
+
+    if not tilesOk or type(tiles) ~= "table" then
+        return false
+    end
+
+    ClearInventoryCache()
+
     local checked = {}
 
-    for _, tile in pairs(InventoryController:GetTiles() or {}) do
+    for _, tile in pairs(tiles) do
         local id = tile and tile.ItemId
 
         if id ~= nil and not checked[id] then
@@ -157,37 +248,111 @@ local function RefreshMaterialAmounts(force)
                 return ItemConfig.match(id):unwrap()
             end)
 
-            if success
-                and config
-                and config.Display
-                and config.Display.Category == "Material" then
+            if success and config and config.Display then
+                local category = config.Display.Category
 
-                local name =
-                    config.Display.Name
-                    or (config.Index and config.Index.StorageKey)
-                    or tostring(id)
+                if InventoryGroups[category] then
+                    local storageKey =
+                        config.Index
+                        and config.Index.StorageKey
+                        or nil
 
-                refreshed[name] = amountsById[id] or 1
+                    local name =
+                        config.Display.Name
+                        or storageKey
+                        or tostring(id)
+
+                    -- Vật phẩm stack dùng số lượng replication.
+                    -- Sword/Gun/Accessory/Fruit thường không có QUANTITY nên mặc định 1.
+                    local amount = amountsById[id]
+
+                    if amount == nil then
+                        amount = 1
+                    end
+
+                    AddInventoryEntry(category, name, amount)
+                end
             end
         end
     end
 
-    MaterialAmounts = refreshed
-    MaterialLastRefresh = now
+    InventoryLastRefresh = now
+    return true
+end
+
+local function GetInventoryAmount(itemName)
+    RefreshInventoryCache(false)
+
+    local normalized = NormalizeInventoryName(itemName)
+    local amount = tonumber(InventoryAmountsByName[normalized]) or 0
+
+    if amount > 0 then
+        return amount
+    end
+
+    local alias = InventoryNameAliases[normalized]
+
+    if alias then
+        return tonumber(InventoryAmountsByName[alias]) or 0
+    end
+
+    return 0
 end
 
 CheckMaterial = (function(materialName)
-    RefreshMaterialAmounts(false)
-    return tonumber(MaterialAmounts[materialName]) or 0
+    local normalized = NormalizeInventoryName(materialName)
+
+    RefreshInventoryCache(false)
+
+    if InventoryCategoryByName[normalized] ~= "Material" then
+        return 0
+    end
+
+    return tonumber(InventoryAmountsByName[normalized]) or 0
 end)
 
--- Build cache ngay lần đầu để các điều kiện phía dưới có dữ liệu tức thì.
-RefreshMaterialAmounts(true)
 CheckInventory = (function(...)
-    for _, v in pairs(COMMF_:InvokeServer("getInventory")) do
-    for _, n in next, {...} do if v.Name == n then return true end end
-    end return false
+    RefreshInventoryCache(false)
+
+    local wanted = {...}
+
+    for _, itemName in ipairs(wanted) do
+        if GetInventoryAmount(itemName) > 0 then
+            return true
+        end
+
+        -- Fallback cục bộ cho Tool đang equip/Backpack.
+        -- Không gọi remote inventory cũ.
+        local normalizedWanted = NormalizeInventoryName(itemName)
+        local alias = InventoryNameAliases[normalizedWanted]
+
+        for _, container in ipairs({
+            LocalPlayer:FindFirstChild("Backpack"),
+            Character
+        }) do
+            if container then
+                for _, tool in ipairs(container:GetChildren()) do
+                    if tool:IsA("Tool") then
+                        local normalizedTool =
+                            NormalizeInventoryName(tool.Name)
+
+                        if normalizedTool == normalizedWanted
+                            or (alias and normalizedTool == alias)
+                        then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return false
 end)
+
+-- Build cache ngay lần đầu để main loop có dữ liệu tức thì.
+RefreshInventoryCache(true)
+
 KillAura = (function(vName)
     pcall(function() setscriptable(LocalPlayer, "SimulationRadius", true) end)
     pcall(function() sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge) end)
