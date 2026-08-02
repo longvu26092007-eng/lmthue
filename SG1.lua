@@ -771,8 +771,60 @@ if LocalPlayer.Data.Level.Value < 2300 then LocalPlayer:Kick("Please Farm Level 
 local all, done = 0, false
 local livingZombieTimer = 0
 
--- Lock tránh gọi ChangeToFolder nhiều lần khi main loop (0.2s) phát hiện đã có Skull Guitar.
+-- Lock tránh gọi ChangeToFolder nhiều lần khi main loop (0.2s) phát hiện đã có Soul Guitar.
 local CompletedFolderLock = false
+
+-- Lock ghi file hoàn thành đúng một lần.
+local CompletedSoulGuitarFileLock = false
+
+-- Chỉ ghi file khi Inventory Service mới xác nhận thật sự có Soul Guitar.
+-- Hỗ trợ cả tên hiển thị "Soul Guitar" và tên cũ "Skull Guitar".
+local function WriteCompletedSoulGuitarFile()
+    if CompletedSoulGuitarFileLock then
+        return true
+    end
+
+    if not CheckInventory("Soul Guitar", "Skull Guitar") then
+        return false
+    end
+
+    if type(writefile) ~= "function" then
+        warn("[Completed] Executor không hỗ trợ writefile - chưa thể tạo file Soul Guitar")
+        return false
+    end
+
+    local playerName =
+        tostring((LocalPlayer and LocalPlayer.Name) or "UnknownPlayer")
+
+    local fileName = playerName .. ".txt"
+
+    local ok, err = pcall(function()
+        writefile(fileName, "Completed-soulguitar")
+    end)
+
+    if not ok then
+        warn(
+            "[Completed] Lỗi ghi "
+                .. fileName
+                .. ": "
+                .. tostring(err)
+        )
+        return false
+    end
+
+    CompletedSoulGuitarFileLock = true
+
+    getgenv().CompletedSoulGuitar = true
+    getgenv().CompletedSoulGuitarFile = fileName
+
+    warn(
+        "[Completed] Đã ghi "
+            .. fileName
+            .. " = Completed-soulguitar"
+    )
+
+    return true
+end
 
 -- Chuẩn hóa id1/id2/id3 trước khi truyền vào ChangeToFolder.
 --   id1/id2 (allowNil=false): rỗng / placeholder / "nil" -> (nil, false) -> caller BỎ QUA.
@@ -864,8 +916,18 @@ end
 spawn(function()
     while task.wait(0.2) do
         xpcall(function() local c = 0
-            if done or CheckInventory("Skull Guitar") then SetText("DONE SOUL GUITAR") done = true
-            ChangeFolderAfterCompleted("DONE SOUL GUITAR")
+            local hasSoulGuitar =
+                CheckInventory("Soul Guitar", "Skull Guitar")
+
+            if hasSoulGuitar then
+                SetText("DONE SOUL GUITAR")
+                done = true
+
+                -- Ghi marker trước. Chỉ đổi folder sau khi file đã được tạo thành công.
+                if WriteCompletedSoulGuitarFile() then
+                    ChangeFolderAfterCompleted("DONE SOUL GUITAR")
+                end
+
             elseif CheckMaterial("Dark Fragment") < 1 then
                 if CheckSea(2) then
                     if CheckMonster("Darkbeard") then for _, v2 in next, {workspace.Enemies, ReplicatedStorage} do for _, v in next, v2:GetChildren() do if v.Name == "Darkbeard" then repeat task.wait() SetText("Killing Darkbeard\nHealth: ".. math.floor(v.Humanoid.Health / v.Humanoid.MaxHealth * 100).."%") KillMonster(v.Name) until not v or not v:FindFirstChild("Humanoid") or v.Humanoid.Health <= 0 Tween(false) end end end
